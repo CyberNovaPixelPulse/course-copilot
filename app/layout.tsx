@@ -22,9 +22,16 @@ const notoSansTc = Noto_Sans_TC({
 });
 
 export const metadata: Metadata = {
-  title: "AI 課表助手",
+  title: "AI 課表助手 - 截圖一鍵匯入行事曆",
   description:
-    "拍下你的課表照片，我們幫你將混亂的截圖轉為清晰的週曆 — 讓你不再花時間手動抄課表。",
+    "專為學生打造的 AI 課表助手，上傳課表截圖即可自動轉換並匯入 Apple / Google 日曆。",
+  keywords: [
+    "AI 課表助手",
+    "課表轉行事曆",
+    "AI 課表",
+    "課表 ics",
+    "necterelux",
+  ],
   verification: {
     google: "11dA7xDPvOjAqIt9fiVCW5Fg6ikuqB5Dc5U4uc9eNuw",
   },

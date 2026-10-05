@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   const googleSession = await getGoogleSession();
   if (!googleSession?.user) {
     return NextResponse.json(
-      { error: "Sign in with Google to unlock the NT$30 plan.", requiresAuth: true },
+      { error: "Sign in with Google to unlock the NT$33 plan.", requiresAuth: true },
       { status: 401 },
     );
   }
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
               currency: "twd",
               unit_amount: PLAN_PRICE_TWD,
               product_data: {
-                name: "Course Copilot NT$30 Plan",
+                name: "Course Copilot NT$33 Plan",
                 description: "30 high-precision gpt-4o extractions + unlimited .ics downloads",
               },
             },

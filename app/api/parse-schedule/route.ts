@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseScheduleImage } from "@/lib/parse-schedule";
 import {
+  consumeFreeScan,
+  freeScansRemaining,
   incrementParse,
   readEntitlement,
   toUsagePublic,
   attachEntitlement,
   withAccountId,
+  withFreeScans,
 } from "@/lib/entitlement";
 import { getGoogleSession } from "@/lib/session";
 import { WEEKDAYS, type Course, type CourseSlot } from "@/lib/types";
@@ -93,9 +96,28 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getGoogleSession();
     const authenticated = Boolean(session);
+    if (!authenticated) {
+      return NextResponse.json(
+        { error: "Sign in with Google to use your 3 free scans.", requiresAuth: true },
+        { status: 401 },
+      );
+    }
     const googleId = session?.user?.id || session?.user?.email;
     let entitlement = readEntitlement(request);
     if (googleId) entitlement = withAccountId(entitlement, googleId);
+    entitlement = withFreeScans(entitlement, true);
+    if (!entitlement.paid && freeScansRemaining(entitlement, true) <= 0) {
+      const response = NextResponse.json(
+        {
+          error: "Free scans are used up. Unlock the paid plan to keep scanning.",
+          requiresPayment: true,
+          usage: toUsagePublic(entitlement, true),
+        },
+        { status: 402 },
+      );
+      attachEntitlement(response, entitlement);
+      return response;
+    }
     const modelName = "gpt-4o";
     console.log("Currently using model:", modelName);
 
@@ -149,7 +171,7 @@ export async function POST(request: NextRequest) {
       }),
     );
 
-    const next = incrementParse(entitlement, "gpt-4o");
+    const next = entitlement.paid ? incrementParse(entitlement, "gpt-4o") : consumeFreeScan(entitlement);
     const usage = toUsagePublic(next, authenticated);
     const response = NextResponse.json({ courses, usage, model: "gpt-4o" });
     attachEntitlement(response, next);

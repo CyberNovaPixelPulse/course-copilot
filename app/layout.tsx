@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import dynamic from "next/dynamic";
 import { Geist, Geist_Mono, Noto_Sans_TC } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import Providers from "./providers";
 import TopNav from "./components/TopNav";
+
+const DevFloatingToolbar = dynamic(() => import("./components/DevFloatingToolbar"));
 import "./globals.css";
 
 const geistSans = Geist({
@@ -47,6 +50,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Providers>
           <TopNav />
           <div className="flex min-h-full flex-1 flex-col pt-16">{children}</div>
+          {process.env.NODE_ENV === "development" ? <DevFloatingToolbar /> : null}
         </Providers>
         <Analytics />
       </body>

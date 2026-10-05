@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { coursesToIcs } from "@/lib/ics";
+import { formatPlanPrice, loadClientRates, type CurrencyCode } from "@/lib/currency";
+import {
+  compressScheduleImage,
+  percentCropToPixels,
+  type PixelRect,
+} from "@/lib/imageCompressor";
+import { getSampleCourses, localizeSampleCourses } from "@/lib/sampleSchedule";
+import ExportSuccessModal from "./ExportSuccessModal";
+import ScheduleCropModal from "./ScheduleCropModal";
 import type { Course } from "@/lib/types";
 import { useSession, signIn } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
@@ -10,6 +18,10 @@ import WeeklyCalendar from "./WeeklyCalendar";
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const TOKEN_HEADER = "x-cc-token";
 const STORAGE_KEY = "cc_entitlement_token";
+const OPEN_PAYWALL_EVENT = "cc-open-paywall";
+const USAGE_UPDATED_EVENT = "cc-usage-updated";
+const CURRENCY_EVENT = "cc-dev-currency";
+const CURRENCY_KEY = "cc_dev_currency";
 
 type PreviewFile = {
   id: string;
@@ -22,6 +34,7 @@ type Usage = {
   parseCount: number;
   gpt4oCount: number;
   gpt4oRemaining: number;
+  freeScansRemaining?: number;
   canExportIcs: boolean;
   model: string;
   token?: string;
@@ -51,6 +64,19 @@ function persistUsage(usage: Usage) {
   }
 }
 
+function EmphasizedText({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, index) =>
+    part.startsWith("**") && part.endsWith("**") ? (
+      <strong key={index} className="font-semibold">
+        {part.slice(2, -2)}
+      </strong>
+    ) : (
+      <span key={index}>{part}</span>
+    ),
+  );
+}
+
 function authHeaders(): HeadersInit {
   if (typeof window === "undefined") return {};
   const token = window.localStorage.getItem(STORAGE_KEY);
@@ -59,23 +85,95 @@ function authHeaders(): HeadersInit {
 
 export default function ScheduleUpload() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const scrollToCalendar = useRef(false);
+  const showingSample = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<PreviewFile[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { status } = useSession();
   const signedIn = status === "authenticated";
   const [showPaywall, setShowPaywall] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [rates, setRates] = useState<Record<string, number> | null>(null);
+  const [currencyOverride, setCurrencyOverride] = useState<CurrencyCode | null>(null);
+  const [cropQueue, setCropQueue] = useState<File[]>([]);
+  const [exportSuccessOpen, setExportSuccessOpen] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const preparedBatch = useRef<File[]>([]);
 
   const parseRequestId = useRef(0);
+
+  useEffect(() => {
+    if (!scrollToCalendar.current || courses.length === 0) return;
+    scrollToCalendar.current = false;
+    calendarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [courses]);
+
+  useEffect(() => {
+    if (!showingSample.current) return;
+    setCourses((current) => localizeSampleCourses(current, locale));
+  }, [locale]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadClientRates().then((next) => {
+      if (!cancelled && next) setRates(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function loadSampleSchedule() {
+    setError(null);
+    scrollToCalendar.current = true;
+    showingSample.current = true;
+    setCourses(getSampleCourses(locale));
+  }
 
   const applyUsage = useCallback((next: Usage) => {
     persistUsage(next);
     setUsage(next);
+    window.dispatchEvent(new CustomEvent(USAGE_UPDATED_EVENT));
+  }, []);
+
+  useEffect(() => {
+    function onOpenPaywall() {
+      setShowPaywall(true);
+    }
+    window.addEventListener(OPEN_PAYWALL_EVENT, onOpenPaywall);
+    return () => window.removeEventListener(OPEN_PAYWALL_EVENT, onOpenPaywall);
+  }, []);
+
+  useEffect(() => {
+    function onUsage(event: Event) {
+      const detail = (event as CustomEvent<Usage>).detail;
+      if (!detail?.token || typeof detail.paid !== "boolean") return;
+      persistUsage(detail);
+      setUsage(detail);
+      if (detail.paid) setShowPaywall(false);
+    }
+    window.addEventListener(USAGE_UPDATED_EVENT, onUsage);
+    return () => window.removeEventListener(USAGE_UPDATED_EVENT, onUsage);
+  }, []);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    const stored = window.localStorage.getItem(CURRENCY_KEY);
+    if (stored === "TWD" || stored === "USD" || stored === "JPY" || stored === "EUR") {
+      setCurrencyOverride(stored);
+    }
+    function onCurrency(event: Event) {
+      const detail = (event as CustomEvent<CurrencyCode | null>).detail;
+      setCurrencyOverride(detail ?? null);
+    }
+    window.addEventListener(CURRENCY_EVENT, onCurrency);
+    return () => window.removeEventListener(CURRENCY_EVENT, onCurrency);
   }, []);
 
   useEffect(() => {
@@ -131,7 +229,18 @@ export default function ScheduleUpload() {
           courses?: Course[];
           error?: string;
           usage?: Usage;
+          requiresAuth?: boolean;
+          requiresPayment?: boolean;
         };
+        if (response.status === 401 || data.requiresAuth) {
+          await signIn("google", { callbackUrl: "/#upload" });
+          return;
+        }
+        if (response.status === 402 || data.requiresPayment) {
+          if (data.usage) applyUsage(data.usage);
+          setShowPaywall(true);
+          throw new Error(data.error || t.upload.parseFailed);
+        }
         if (!response.ok) {
           throw new Error(data.error || t.upload.parseFailed);
         }
@@ -144,9 +253,11 @@ export default function ScheduleUpload() {
         );
       }
       if (requestId !== parseRequestId.current) return;
+      showingSample.current = false;
       setCourses(parsed);
     } catch (parseError) {
       if (requestId !== parseRequestId.current) return;
+      showingSample.current = false;
       setCourses([]);
       setError(
         parseError instanceof Error
@@ -170,20 +281,40 @@ export default function ScheduleUpload() {
         return;
       }
 
-      const next = valid.map((file) => ({
-        id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+      setError(null);
+      setCropQueue((current) => [...current, ...valid]);
+    },
+    [t.upload.invalidType],
+  );
+
+  async function acceptCrop(source: PixelRect | null) {
+    const current = cropQueue[0];
+    if (!current || isCompressing) return;
+    setIsCompressing(true);
+    setError(null);
+    try {
+      const compressed = await compressScheduleImage(current, source ?? undefined);
+      preparedBatch.current.push(compressed);
+    } catch {
+      setError(t.upload.parseFailed);
+    } finally {
+      setIsCompressing(false);
+    }
+    const rest = cropQueue.slice(1);
+    setCropQueue(rest);
+    if (rest.length > 0) return;
+    const batch = preparedBatch.current.splice(0);
+    if (batch.length === 0) return;
+    setFiles((existing) => [
+      ...existing,
+      ...batch.map((file) => ({
+        id: `${file.name}-${file.size}-${crypto.randomUUID()}`,
         file,
         previewUrl: URL.createObjectURL(file),
-      }));
-
-      setFiles((current) => {
-        const merged = [...current, ...next];
-        void parseFiles(merged.map((item) => item.file));
-        return merged;
-      });
-    },
-    [parseFiles, t.upload.invalidType],
-  );
+      })),
+    ]);
+    void parseFiles(batch);
+  }
 
   function onDrop(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -199,19 +330,34 @@ export default function ScheduleUpload() {
       if (target) URL.revokeObjectURL(target.previewUrl);
       const remaining = current.filter((file) => file.id !== id);
       if (remaining.length === 0) {
+        showingSample.current = false;
         setCourses([]);
       }
       return remaining;
     });
   }
 
-  function handleDownload() {
-    if (!signedIn || !usage?.canExportIcs) {
+  async function handleDownload() {
+    if (usage?.paid !== true) {
       setShowPaywall(true);
       return;
     }
     try {
-      downloadIcsFile(coursesToIcs(courses));
+      const response = await fetch("/api/export-ics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ courses }),
+      });
+      if (response.status === 401) {
+        await signIn("google", { callbackUrl: "/#upload" });
+        return;
+      }
+      if (response.status === 402 || !response.ok) {
+        setShowPaywall(true);
+        return;
+      }
+      downloadIcsFile(await response.text());
+      setExportSuccessOpen(true);
     } catch {
       setError(t.upload.icsError);
     }
@@ -227,7 +373,8 @@ export default function ScheduleUpload() {
     try {
       const response = await fetch("/api/checkout", {
         method: "POST",
-        headers: authHeaders(),
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ locale }),
       });
       const data = (await response.json()) as { url?: string; error?: string };
       if (!response.ok || !data.url) {
@@ -244,12 +391,31 @@ export default function ScheduleUpload() {
     }
   }
 
+  const priceLabel = formatPlanPrice(locale, rates, currencyOverride);
+  const withPrice = (text: string) => text.replaceAll("NT$33", priceLabel);
+
   return (
     <section
       id="upload"
       className="mx-auto w-full max-w-6xl scroll-mt-24"
       aria-labelledby="upload-heading"
     >
+      {status === "unauthenticated" ? (
+        <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4 sm:px-5">
+          <p className="text-sm font-semibold leading-6 text-indigo-950">
+            <span aria-hidden>✨ </span>
+            {t.upload.freeScanCta ?? "Sign in with Google to get 3 free AI schedule scans"}
+          </p>
+          <button
+            type="button"
+            onClick={() => void signIn("google", { callbackUrl: "/#upload" })}
+            className="mt-3 rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+          >
+            {t.nav.signIn}
+          </button>
+        </div>
+      ) : null}
+
       <div
         onDragOver={(event) => {
           event.preventDefault();
@@ -367,32 +533,80 @@ export default function ScheduleUpload() {
         ) : null}
       </div>
 
+      <div className="mt-4 flex justify-center">
+        <button
+          type="button"
+          onClick={loadSampleSchedule}
+          className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+        >
+          {t.upload.trySample ?? "No schedule? Click here to try with sample data"}
+        </button>
+      </div>
+
       {courses.length > 0 ? (
-        <div className="mt-8 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-stone-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
+        <div
+          ref={calendarRef}
+          className="mt-8 scroll-mt-24 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm"
+        >
+          <div className="flex flex-col gap-3 border-b border-stone-200 px-5 py-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-semibold text-stone-900">{t.upload.weeklyTitle}</h2>
-              <p className="text-sm text-stone-500">{t.upload.weeklyHint}</p>
-              {usage ? (
-                <p className="mt-1 text-xs text-stone-400">
-                  {usage.paid ? t.upload.planPaid(usage.gpt4oRemaining) : t.upload.planFree}
-                </p>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleDownload()}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium ${
+                  usage?.paid === true
+                    ? "bg-indigo-600 text-white hover:bg-indigo-500"
+                    : "bg-stone-200 text-stone-500"
+                }`}
+              >
+                {usage?.paid === true ? (
+                  t.upload.download
+                ) : (
+                  <>
+                    <span aria-hidden>🔒</span>
+                    {t.upload.downloadLocked}
+                  </>
+                )}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleDownload}
-              className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium ${
-                usage?.canExportIcs
-                  ? "bg-indigo-600 text-white hover:bg-indigo-500"
-                  : "bg-stone-200 text-stone-500"
-              }`}
-            >
-              {usage?.canExportIcs ? t.upload.download : t.upload.downloadLocked}
-            </button>
+            <div role="note">
+              <p className="text-sm text-amber-500">
+                <EmphasizedText text={t.upload.weeklyHint} />
+              </p>
+              <p className="mt-1 text-sm font-semibold text-amber-600">
+                {usage?.paid
+                  ? withPrice(t.upload.planPaid(usage.gpt4oRemaining))
+                  : withPrice(t.upload.planFree)}
+              </p>
+            </div>
           </div>
           <WeeklyCalendar courses={courses} onChange={setCourses} />
         </div>
+      ) : null}
+
+      {exportSuccessOpen ? (
+        <ExportSuccessModal courses={courses} onClose={() => setExportSuccessOpen(false)} />
+      ) : null}
+
+      {cropQueue[0] ? (
+        <ScheduleCropModal
+          file={cropQueue[0]}
+          title={t.upload.cropTitle ?? "Crop the schedule"}
+          hint={
+            t.upload.cropHint ??
+            "Select the schedule table itself. Leave out the top tabs and the bottom toolbar for the most accurate result."
+          }
+          confirmLabel={t.upload.cropConfirm ?? "Crop and parse"}
+          skipLabel={t.upload.cropSkip ?? "Use the full image"}
+          busy={isCompressing}
+          onSkip={() => void acceptCrop(null)}
+          onConfirm={(crop, image) =>
+            void acceptCrop(
+              percentCropToPixels(crop, image.naturalWidth, image.naturalHeight),
+            )
+          }
+        />
       ) : null}
 
       {showPaywall ? (
@@ -409,8 +623,8 @@ export default function ScheduleUpload() {
             <p id="paywall-title" className="text-lg font-semibold text-stone-900">
               {t.paywall.title}
             </p>
-            <p className="mt-2 text-sm leading-6 text-stone-600">{t.paywall.offer}</p>
-            <p className="mt-3 text-sm text-stone-500">{t.paywall.body}</p>
+            <p className="mt-2 text-sm leading-6 text-stone-600">{withPrice(t.paywall.offer)}</p>
+            <p className="mt-3 text-sm text-stone-500">{withPrice(t.paywall.body)}</p>
             {!signedIn ? (
               <button
                 type="button"
@@ -426,7 +640,7 @@ export default function ScheduleUpload() {
                 onClick={() => void startCheckout()}
                 className="mt-5 w-full rounded-full bg-indigo-600 px-4 py-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
               >
-                {checkoutLoading ? t.paywall.paying : t.paywall.pay}
+                {checkoutLoading ? t.paywall.paying : withPrice(t.paywall.pay)}
               </button>
             )}
             <button

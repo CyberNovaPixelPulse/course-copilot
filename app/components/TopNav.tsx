@@ -5,6 +5,22 @@ import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { LOCALES, useI18n, type Locale } from "@/lib/i18n";
 
+const TOKEN_HEADER = "x-cc-token";
+const STORAGE_KEY = "cc_entitlement_token";
+const OPEN_PAYWALL_EVENT = "cc-open-paywall";
+const USAGE_UPDATED_EVENT = "cc-usage-updated";
+
+type CreditUsage = {
+  paid: boolean;
+  gpt4oRemaining: number;
+  freeScansRemaining?: number;
+};
+
+type CreditBadge = {
+  mode: "paid" | "free" | "guest";
+  count: number;
+};
+
 function LanguageMenu({
   label,
   locale,
@@ -108,12 +124,57 @@ export default function TopNav() {
   const { t, locale, setLocale } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const signedIn = status === "authenticated";
+  const [credits, setCredits] = useState<CreditBadge | null>(null);
 
   const navLinks = [
     { href: "/", label: t.nav.home },
     { href: "/#upload", label: t.nav.upload },
     { href: "/#how-it-works", label: t.nav.howItWorks },
   ];
+
+  useEffect(() => {
+    if (status === "loading") return;
+    let cancelled = false;
+
+    async function loadCredits() {
+      try {
+        const token = window.localStorage.getItem(STORAGE_KEY);
+        const headers: HeadersInit = token ? { [TOKEN_HEADER]: token } : {};
+        const response = await fetch("/api/user/usage", { headers });
+        if (!response.ok) return;
+        const data = (await response.json()) as CreditUsage;
+        if (!cancelled) applyCreditData(data);
+      } catch {
+        if (!cancelled) setCredits({ mode: status === "authenticated" ? "free" : "guest", count: 0 });
+      }
+    }
+
+    function applyCreditData(data: CreditUsage) {
+      if (data.paid) {
+        setCredits({ mode: "paid", count: data.gpt4oRemaining });
+      } else if (status === "authenticated") {
+        setCredits({ mode: "free", count: data.freeScansRemaining ?? 0 });
+      } else {
+        setCredits({ mode: "guest", count: 0 });
+      }
+    }
+
+    function onUsage(event: Event) {
+      const detail = (event as CustomEvent<CreditUsage>).detail;
+      if (detail && typeof detail.paid === "boolean") {
+        applyCreditData(detail);
+        return;
+      }
+      void loadCredits();
+    }
+
+    void loadCredits();
+    window.addEventListener(USAGE_UPDATED_EVENT, onUsage);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(USAGE_UPDATED_EVENT, onUsage);
+    };
+  }, [status]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -153,16 +214,33 @@ export default function TopNav() {
             <span className="mr-1.5 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 align-middle text-xs text-white">
               CC
             </span>
-            <span className="align-middle">{t.nav.appName}</span>
+            <span className="hidden align-middle sm:inline">{t.nav.appName}</span>
           </Link>
 
-          <div className="flex items-center justify-end gap-2 justify-self-end sm:gap-3">
+          <div className="flex min-w-0 items-center justify-end gap-1.5 justify-self-end sm:gap-3">
             <LanguageMenu label={t.nav.language} locale={locale} setLocale={setLocale} />
+
+            {credits === null ? (
+              <div className="h-9 w-28 animate-pulse rounded-full bg-blue-50 dark:bg-blue-950/40" />
+            ) : (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event(OPEN_PAYWALL_EVENT))}
+                className="inline-flex h-9 max-w-[46vw] items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 text-xs font-medium text-blue-700 hover:bg-blue-100 sm:max-w-none sm:px-2.5 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
+              >
+                <span aria-hidden>⚡</span>
+                <span className="truncate whitespace-nowrap">
+                  {credits.mode === "free"
+                    ? (t.nav.freeCredits ?? ((count: number) => `Free scans: ${count}`))(credits.count)
+                    : (t.nav.credits ?? ((count: number) => `Credits: ${count}`))(credits.count)}
+                </span>
+              </button>
+            )}
 
             {status === "loading" ? (
               <div className="h-9 w-24 animate-pulse rounded-full bg-stone-100 sm:w-28" />
             ) : signedIn ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 {session?.user?.image ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -183,7 +261,7 @@ export default function TopNav() {
                 <button
                   type="button"
                   onClick={() => void signOut({ callbackUrl: "/" })}
-                  className="rounded-full border border-stone-300 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 sm:px-3 sm:text-sm"
+                  className="rounded-full border border-stone-300 px-2 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 sm:px-3 sm:text-sm"
                 >
                   {t.nav.signOut}
                 </button>

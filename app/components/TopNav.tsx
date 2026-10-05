@@ -1,9 +1,107 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { useI18n, type Locale } from "@/lib/i18n";
+import { LOCALES, useI18n, type Locale } from "@/lib/i18n";
+
+function LanguageMenu({
+  label,
+  locale,
+  setLocale,
+}: {
+  label: string;
+  locale: Locale;
+  setLocale: (locale: Locale) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const current = LOCALES.find((item) => item.code === locale) ?? LOCALES[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const selected = rootRef.current?.querySelector<HTMLElement>("[aria-selected='true']");
+    selected?.scrollIntoView({ block: "nearest" });
+
+    function onPointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        id="language-switcher"
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls="language-menu"
+        aria-label={label}
+        title={`${current.native} (${current.english})`}
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-9 max-w-[7.5rem] items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 text-xs text-stone-700 sm:max-w-[11rem] sm:px-3 sm:text-sm"
+      >
+        <span className="truncate">{current.native}</span>
+        <span aria-hidden className="text-[10px] text-stone-400">
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <ul
+          id="language-menu"
+          role="listbox"
+          aria-label={label}
+          className="language-menu absolute right-0 z-50 mt-2 max-h-64 w-[min(18rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-stone-200 bg-white py-1 text-left shadow-lg"
+          dir="ltr"
+        >
+          {LOCALES.map((item) => {
+            const selected = item.code === locale;
+            return (
+              <li key={item.code} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    setLocale(item.code);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-stone-50 ${
+                    selected ? "bg-indigo-50 text-indigo-900" : "text-stone-800"
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{item.native}</span>
+                    <span className="block truncate text-xs text-stone-500">{item.english}</span>
+                  </span>
+                  {selected ? (
+                    <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-indigo-600" aria-hidden>
+                      <path
+                        fill="currentColor"
+                        d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.2 7.2a1 1 0 0 1-1.4 0L3.3 9.1a1 1 0 1 1 1.4-1.4l3.1 3.1 6.5-6.5a1 1 0 0 1 1.4 0Z"
+                      />
+                    </svg>
+                  ) : (
+                    <span className="h-4 w-4 shrink-0" aria-hidden />
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 
 export default function TopNav() {
   const { data: session, status } = useSession();
@@ -59,18 +157,7 @@ export default function TopNav() {
           </Link>
 
           <div className="flex items-center justify-end gap-2 justify-self-end sm:gap-3">
-            <label className="sr-only" htmlFor="language-switcher">
-              {t.nav.language}
-            </label>
-            <select
-              id="language-switcher"
-              value={locale}
-              onChange={(event) => setLocale(event.target.value as Locale)}
-              className="h-9 max-w-[7.5rem] rounded-full border border-stone-200 bg-white px-2 text-xs text-stone-700 sm:max-w-none sm:px-3 sm:text-sm"
-            >
-              <option value="zh-TW">{t.nav.langZh}</option>
-              <option value="en">{t.nav.langEn}</option>
-            </select>
+            <LanguageMenu label={t.nav.language} locale={locale} setLocale={setLocale} />
 
             {status === "loading" ? (
               <div className="h-9 w-24 animate-pulse rounded-full bg-stone-100 sm:w-28" />

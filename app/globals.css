@@ -19,3 +19,23 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
+
+.language-menu {
+  scrollbar-width: thin;
+  scrollbar-color: #d6d3d1 transparent;
+}
+
+.language-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.language-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.language-menu::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #d6d3d1;
+  background-clip: padding-box;
+}

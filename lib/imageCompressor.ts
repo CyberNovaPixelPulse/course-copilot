@@ -1,4 +1,8 @@
-export const MAX_IMAGE_EDGE = 1600;
+/** Longest side. 1024px is two 512px tiles. */
+export const MAX_LONG_EDGE = 1024;
+/** Shortest side stays in the 512–768px band so a 1024×768 image is four tiles. */
+export const MIN_SHORT_EDGE = 512;
+export const MAX_SHORT_EDGE = 768;
 export const JPEG_QUALITY = 0.85;
 
 export type PixelRect = {
@@ -8,15 +12,35 @@ export type PixelRect = {
   height: number;
 };
 
-function fittedSize(width: number, height: number) {
-  const longest = Math.max(width, height);
-  if (longest <= MAX_IMAGE_EDGE) {
-    return { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) };
+export function fittedSize(width: number, height: number) {
+  let nextWidth = Math.max(1, width);
+  let nextHeight = Math.max(1, height);
+
+  const fitLongest = Math.max(nextWidth, nextHeight);
+  if (fitLongest > MAX_LONG_EDGE) {
+    const scale = MAX_LONG_EDGE / fitLongest;
+    nextWidth *= scale;
+    nextHeight *= scale;
   }
-  const scale = MAX_IMAGE_EDGE / longest;
+
+  const tooTallShort = Math.min(nextWidth, nextHeight);
+  if (tooTallShort > MAX_SHORT_EDGE) {
+    const scale = MAX_SHORT_EDGE / tooTallShort;
+    nextWidth *= scale;
+    nextHeight *= scale;
+  }
+
+  const shortEdge = Math.min(nextWidth, nextHeight);
+  const longEdge = Math.max(nextWidth, nextHeight);
+  if (shortEdge < MIN_SHORT_EDGE) {
+    const scale = Math.min(MIN_SHORT_EDGE / shortEdge, MAX_LONG_EDGE / longEdge);
+    nextWidth *= scale;
+    nextHeight *= scale;
+  }
+
   return {
-    width: Math.max(1, Math.round(width * scale)),
-    height: Math.max(1, Math.round(height * scale)),
+    width: Math.max(1, Math.round(nextWidth)),
+    height: Math.max(1, Math.round(nextHeight)),
   };
 }
 

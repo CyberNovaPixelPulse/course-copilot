@@ -7,27 +7,6 @@ export type PeriodTime = {
   endTime: string;
 };
 
-const PERIOD_MAP_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["periods"],
-  properties: {
-    periods: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["label", "startTime", "endTime"],
-        properties: {
-          label: { type: "string" },
-          startTime: { type: "string", description: 'Exact HH:mm from the header, e.g. "08:45"' },
-          endTime: { type: "string", description: 'Exact HH:mm from the header, e.g. "09:35"' },
-        },
-      },
-    },
-  },
-} as const;
-
 const COURSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -38,35 +17,13 @@ const COURSE_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["name", "professor", "slots"],
+        required: ["name", "day", "start", "end", "room"],
         properties: {
           name: { type: "string" },
-          professor: { type: "string" },
-          slots: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["weekday", "startTime", "endTime", "location", "periodLabels"],
-              properties: {
-                weekday: { type: "string", enum: [...WEEKDAYS] },
-                startTime: {
-                  type: "string",
-                  description: "HH:mm copied from the provided period time map",
-                },
-                endTime: {
-                  type: "string",
-                  description: "HH:mm copied from the provided period time map",
-                },
-                location: { type: "string" },
-                periodLabels: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: 'Header labels this block occupies, e.g. ["1","2"] or ["A"]',
-                },
-              },
-            },
-          },
+          day: { type: "integer" },
+          start: { type: "string" },
+          end: { type: "string" },
+          room: { type: "string" },
         },
       },
     },
@@ -75,33 +32,12 @@ const COURSE_SCHEMA = {
 
 export type VisionModel = "gpt-4o" | "gpt-4o-mini";
 
-const STAGE1_PROMPT = `You read timetable HEADERS only. Ignore course names.
-
-Find period labels (1, 2, A, 第1節) and the exact clock times printed next to them (often a second header row), e.g. 1 → 08:45–09:35.
-
-Copy startTime and endTime exactly as HH:mm. Do not round times.
-
-Return JSON: { "periods": [{ "label", "startTime", "endTime" }] }.`;
-
-function stage2Prompt(periodMapText: string) {
-  return `Extract every course from this schedule image as structured JSON.
-
-Use this period → time map (copy these times; do not guess or round):
-${periodMapText}
-
-For each class output:
-- name
-- professor (empty string if unknown)
-- slots: weekday, startTime, endTime, location, periodLabels
-
-Weekday must be one of: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday.
-startTime and endTime must be HH:mm from the map above.
-periodLabels lists the header periods the block occupies, e.g. ["1","2"].
-Group the same course name into one object with multiple slots.
-Do not invent classes.
-
-Return JSON: { "courses": [{ "name", "professor", "slots": [{ "weekday", "startTime", "endTime", "location", "periodLabels" }] }] }.`;
-}
+const COURSE_PROMPT = `Return only the JSON object. No explanation.
+Each class meeting is one object with only name, day, start, end, room.
+day: 1 Monday, 2 Tuesday, 3 Wednesday, 4 Thursday, 5 Friday, 6 Saturday, 7 Sunday.
+start and end are HH:mm copied from the image. Do not round.
+room is the classroom, or "".
+{"courses":[{"name":"","day":1,"start":"08:10","end":"09:00","room":""}]}`;
 
 const MAX_PERIOD_GAP_MINUTES = 20;
 
@@ -131,6 +67,16 @@ function normalizeTime(value: unknown): string {
   if (hours > 23) return "";
   const clock = `${String(hours).padStart(2, "0")}:${minutes}`;
   return isClockTime(clock) ? clock : "";
+}
+
+function weekdayFromDay(value: unknown): Weekday | null {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 7) {
+    return WEEKDAYS[value - 1];
+  }
+  if (typeof value === "string" && /^[1-7]$/.test(value.trim())) {
+    return WEEKDAYS[Number(value.trim()) - 1];
+  }
+  return normalizeWeekday(value);
 }
 
 function normalizeWeekday(value: unknown): Weekday | null {
@@ -189,39 +135,6 @@ function normalizeWeekday(value: unknown): Weekday | null {
   return aliases[raw] ?? aliases[raw.toLowerCase()] ?? null;
 }
 
-function labelKeys(label: string) {
-  const trimmed = label.trim();
-  const keys = new Set<string>([trimmed, trimmed.toLowerCase()]);
-  const numeric = trimmed.match(/(\d{1,2})/);
-  if (numeric) {
-    keys.add(numeric[1]);
-    keys.add(`period ${numeric[1]}`);
-    keys.add(`第${numeric[1]}節`);
-  }
-  const letter = trimmed.match(/\b([A-J])\b/i);
-  if (letter) keys.add(letter[1].toUpperCase());
-  return [...keys];
-}
-
-export function buildPeriodLookup(periods: PeriodTime[]) {
-  const map = new Map<string, PeriodTime>();
-  for (const period of periods) {
-    for (const key of labelKeys(period.label)) {
-      map.set(key, period);
-    }
-  }
-  return map;
-}
-
-function formatPeriodMap(periods: PeriodTime[]) {
-  if (periods.length === 0) {
-    return "(no header periods found — read clock digits from the image axis only; do not invent a standard timetable)";
-  }
-  return periods
-    .map((period) => `- "${period.label}" → ${period.startTime}–${period.endTime}`)
-    .join("\n");
-}
-
 function openaiClient() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -233,7 +146,10 @@ function openaiClient() {
 function imagePart(mimeType: string, base64: string) {
   return {
     type: "image_url" as const,
-    image_url: { url: `data:${mimeType};base64,${base64}` },
+    image_url: {
+      url: `data:${mimeType};base64,${base64}`,
+      detail: "high" as const,
+    },
   };
 }
 
@@ -248,59 +164,18 @@ async function parseJsonContent(content: string | null | undefined) {
   }
 }
 
-export function normalizePeriodMap(payload: unknown): PeriodTime[] {
-  const root =
-    payload && typeof payload === "object" && "periods" in payload
-      ? (payload as { periods: unknown }).periods
-      : payload;
-  if (!Array.isArray(root)) return [];
-
-  return root.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const row = item as Record<string, unknown>;
-    const label = typeof row.label === "string" ? row.label.trim() : "";
-    const startTime = normalizeTime(row.startTime);
-    const endTime = normalizeTime(row.endTime);
-    if (!label || !startTime || !endTime) return [];
-    return [{ label, startTime, endTime }];
-  });
-}
-
-function normalizeSlot(
-  row: Record<string, unknown>,
-  lookup: Map<string, PeriodTime>,
-): CourseSlot | null {
-  const weekday = normalizeWeekday(row.weekday);
+function meetingFromRow(row: Record<string, unknown>): CourseSlot | null {
+  const weekday = weekdayFromDay(row.day ?? row.weekday);
   if (!weekday) return null;
-
-  const labels = Array.isArray(row.periodLabels)
-    ? row.periodLabels.filter((label): label is string => typeof label === "string")
-    : typeof row.periodLabel === "string"
-      ? [row.periodLabel]
-      : [];
-
-  const resolved = labels
-    .flatMap((label) => {
-      const match = lookup.get(label.trim()) ?? lookup.get(label.trim().toLowerCase());
-      const numeric = label.match(/(\d{1,2})/);
-      const byNumber = numeric ? lookup.get(numeric[1]) : undefined;
-      const found = match ?? byNumber;
-      return found ? [found] : [];
-    })
-    .sort(
-      (a, b) => (timeToMinutes(a.startTime) ?? 0) - (timeToMinutes(b.startTime) ?? 0),
-    );
-
-  const startTime = resolved[0]?.startTime || normalizeTime(row.startTime);
-  const endTime =
-    resolved[resolved.length - 1]?.endTime || normalizeTime(row.endTime);
+  const startTime = normalizeTime(row.start ?? row.startTime);
+  const endTime = normalizeTime(row.end ?? row.endTime);
   if (!startTime || !endTime) return null;
-
+  const room = row.room ?? row.location;
   return {
     weekday,
     startTime,
     endTime,
-    location: typeof row.location === "string" ? row.location.trim() : "",
+    location: typeof room === "string" ? room.trim() : "",
   };
 }
 
@@ -382,11 +257,7 @@ function mergeConsecutiveSlots(slots: CourseSlot[]): CourseSlot[] {
   return merged;
 }
 
-export function normalizeCourses(
-  payload: unknown,
-  periods: PeriodTime[] = [],
-): Course[] {
-  const lookup = buildPeriodLookup(periods);
+export function normalizeCourses(payload: unknown): Course[] {
   const root =
     payload && typeof payload === "object" && "courses" in payload
       ? (payload as { courses: unknown }).courses
@@ -398,19 +269,9 @@ export function normalizeCourses(
     const row = item as Record<string, unknown>;
     const name = typeof row.name === "string" ? row.name.trim() : "";
     if (!name) return [];
-    const professor = typeof row.professor === "string" ? row.professor.trim() : "";
-
-    const fromSlots = Array.isArray(row.slots)
-      ? row.slots.flatMap((slot) => {
-          if (!slot || typeof slot !== "object") return [];
-          const normalized = normalizeSlot(slot as Record<string, unknown>, lookup);
-          return normalized ? [normalized] : [];
-        })
-      : [];
-
-    const single = normalizeSlot(row, lookup);
-    const slots = fromSlots.length > 0 ? fromSlots : single ? [single] : [];
-    return [{ name, professor, slots }];
+    const meeting = meetingFromRow(row);
+    if (!meeting) return [];
+    return [{ name, professor: "", slots: [meeting] }];
   });
 
   return mergeCourses(courses).map((course) => ({
@@ -444,55 +305,11 @@ function metricFrom(
   };
 }
 
-export async function extractScheduleTimeMap(params: {
-  mimeType: string;
-  base64: string;
-  model?: VisionModel;
-}): Promise<{ periods: PeriodTime[]; call: AiCallMetric }> {
-  const modelName = params.model ?? "gpt-4o";
-  console.log("Currently using model:", modelName);
-  const openai = openaiClient();
-  const started = Date.now();
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o",
-    temperature: 0,
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "period_time_map",
-        strict: true,
-        schema: PERIOD_MAP_SCHEMA,
-      },
-    },
-    messages: [
-      { role: "system", content: STAGE1_PROMPT },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "Extract the header period-label → exact clock-time map from this schedule. Copy times like 08:45 exactly; do not round to 08:10.",
-          },
-          imagePart(params.mimeType, params.base64),
-        ],
-      },
-    ],
-  });
-
-  return {
-    periods: normalizePeriodMap(await parseJsonContent(completion.choices[0]?.message?.content)),
-    call: metricFrom(completion, started, "period-map"),
-  };
-}
-
 export async function extractScheduleCourses(params: {
   mimeType: string;
   base64: string;
-  periods: PeriodTime[];
-  model?: VisionModel;
 }): Promise<{ courses: Course[]; call: AiCallMetric }> {
-  const modelName = params.model ?? "gpt-4o";
-  console.log("Currently using model:", modelName);
+  console.log("Currently using model:", "gpt-4o");
   const openai = openaiClient();
   const started = Date.now();
   const completion = await openai.chat.completions.create({
@@ -507,14 +324,11 @@ export async function extractScheduleCourses(params: {
       },
     },
     messages: [
-      { role: "system", content: stage2Prompt(formatPeriodMap(params.periods)) },
+      { role: "system", content: COURSE_PROMPT },
       {
         role: "user",
         content: [
-          {
-            type: "text",
-            text: "Map every course block to the Stage 1 period time map. Use those exact start/end times. Include periodLabels for each slot.",
-          },
+          { type: "text", text: "Extract the courses." },
           imagePart(params.mimeType, params.base64),
         ],
       },
@@ -522,10 +336,7 @@ export async function extractScheduleCourses(params: {
   });
 
   return {
-    courses: normalizeCourses(
-      await parseJsonContent(completion.choices[0]?.message?.content),
-      params.periods,
-    ),
+    courses: normalizeCourses(await parseJsonContent(completion.choices[0]?.message?.content)),
     call: metricFrom(completion, started, "courses"),
   };
 }
@@ -535,14 +346,11 @@ export async function parseScheduleImage(params: {
   base64: string;
   model?: VisionModel;
 }): Promise<{ courses: Course[]; periods: PeriodTime[]; calls: AiCallMetric[] }> {
-  const model = params.model ?? "gpt-4o";
   const calls: AiCallMetric[] = [];
   try {
-    const mapped = await extractScheduleTimeMap({ ...params, model });
-    calls.push(mapped.call);
-    const parsed = await extractScheduleCourses({ ...params, periods: mapped.periods, model });
+    const parsed = await extractScheduleCourses(params);
     calls.push(parsed.call);
-    return { courses: parsed.courses, periods: mapped.periods, calls };
+    return { courses: parsed.courses, periods: [], calls };
   } catch (error) {
     if (error && typeof error === "object") {
       (error as { aiCalls?: AiCallMetric[] }).aiCalls = calls;

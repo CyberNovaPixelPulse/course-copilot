@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { parseScheduleImage, type AiCallMetric } from "@/lib/parse-schedule";
 import { logAiUsage } from "@/lib/turso";
@@ -73,6 +74,19 @@ function countEvents(courses: Course[]) {
   return courses.reduce((total, course) => total + (course.slots?.length ?? 0), 0);
 }
 
+function createTaskId() {
+  const date = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(new Date())
+    .replaceAll("-", "");
+  const suffix = randomUUID().replace(/-/g, "").slice(0, 6);
+  return `task_${date}_${suffix}`;
+}
+
 function mergeCourseSlots(course: Course): Course {
   const slots = dedupeSlots(Array.isArray(course.slots) ? course.slots : []);
   const byWeekday = new Map<string, CourseSlot[]>();
@@ -100,9 +114,39 @@ function mergeCourseSlots(course: Course): Course {
 }
 
 export async function POST(request: NextRequest) {
+  const taskId = createTaskId();
   let billing: UsageBilling = { payment_type: "free", fee_charged_twd: 0, coupon_code: null };
   let eventsCount = 0;
   let mimeType = "";
+
+  function logParseCall(params: {
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    latencyMs: number;
+    status: string;
+    step: number;
+    metadata?: Record<string, unknown>;
+  }) {
+    logAiUsage({
+      siteId: "course-copilot",
+      model: params.model,
+      inputTokens: params.inputTokens,
+      outputTokens: params.outputTokens,
+      latencyMs: params.latencyMs,
+      status: params.status,
+      metadata: {
+        ...params.metadata,
+        task_id: taskId,
+        step: params.step,
+        payment_type: billing.payment_type,
+        fee_charged_twd: billing.fee_charged_twd,
+        coupon_code: billing.coupon_code,
+        events_count: eventsCount,
+      },
+    });
+  }
+
   try {
     const session = await getGoogleSession();
     const authenticated = Boolean(session);
@@ -183,27 +227,23 @@ export async function POST(request: NextRequest) {
       }),
     );
     eventsCount = countEvents(courses);
-    for (const call of parsedResult.calls) {
-      logAiUsage({
-        siteId: "course-copilot",
+    parsedResult.calls.forEach((call, index) => {
+      logParseCall({
         model: call.model,
         inputTokens: call.inputTokens,
         outputTokens: call.outputTokens,
         latencyMs: call.latencyMs,
         status: "success",
+        step: index + 1,
         metadata: {
           stage: call.stage,
           mimeType: image.type,
           courseCount: courses.length,
           periodCount: parsedResult.periods.length,
           paid: entitlement.paid,
-          payment_type: billing.payment_type,
-          fee_charged_twd: billing.fee_charged_twd,
-          coupon_code: billing.coupon_code,
-          events_count: eventsCount,
         },
       });
-    }
+    });
 
     const next = entitlement.paid ? incrementParse(entitlement, "gpt-4o") : consumeFreeScan(entitlement);
     const usage = toUsagePublic(next, authenticated);
@@ -217,46 +257,39 @@ export async function POST(request: NextRequest) {
       error && typeof error === "object" && Array.isArray((error as { aiCalls?: AiCallMetric[] }).aiCalls)
         ? (error as { aiCalls: AiCallMetric[] }).aiCalls
         : [];
-    const failureMeta = {
-      payment_type: billing.payment_type,
-      fee_charged_twd: billing.fee_charged_twd,
-      coupon_code: billing.coupon_code,
-      events_count: eventsCount,
-      mimeType: mimeType || undefined,
-    };
+    const failureMeta = { message, mimeType: mimeType || undefined };
     if (calls.length === 0) {
-      logAiUsage({
-        siteId: "course-copilot",
+      logParseCall({
         model: "gpt-4o",
         inputTokens: 0,
         outputTokens: 0,
         latencyMs: 0,
         status: "error",
-        metadata: { message, ...failureMeta },
+        step: 1,
+        metadata: failureMeta,
       });
     } else {
-      for (const call of calls) {
-        logAiUsage({
-          siteId: "course-copilot",
+      calls.forEach((call, index) => {
+        logParseCall({
           model: call.model,
           inputTokens: call.inputTokens,
           outputTokens: call.outputTokens,
           latencyMs: call.latencyMs,
           status: "success",
-          metadata: { stage: call.stage, ...failureMeta },
+          step: index + 1,
+          metadata: { stage: call.stage, mimeType: mimeType || undefined },
         });
-      }
-      logAiUsage({
-        siteId: "course-copilot",
+      });
+      logParseCall({
         model: "gpt-4o",
         inputTokens: 0,
         outputTokens: 0,
         latencyMs: 0,
         status: "error",
+        step: calls.length + 1,
         metadata: {
-          message,
-          completedStages: calls.map((call) => call.stage),
           ...failureMeta,
+          completedStages: calls.map((call) => call.stage),
         },
       });
     }

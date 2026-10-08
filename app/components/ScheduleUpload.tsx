@@ -442,17 +442,18 @@ export default function ScheduleUpload() {
   }
 
   function promoFailureMessage(error?: string) {
-    if (error === "limit") return t.paywall.promoLimit ?? "優惠碼已達使用上限";
+    if (error === "auth") return "請先登入 Google 帳號後再進行兌換";
     if (error === "expired") return t.paywall.promoExpired ?? "優惠碼已過期";
     if (error === "unavailable") {
       return t.paywall.promoUnavailable ?? "優惠碼暫時無法兌換，請稍後再試。";
     }
-    return t.paywall.promoInvalid ?? "優惠碼無效或已停用";
+    if (error === "inactive" || error === "limit") return "優惠碼無效或已被使用";
+    return t.paywall.promoInvalid ?? "優惠碼無效或已被使用";
   }
 
   async function redeemPromo() {
-    if (!signedIn) {
-      await signIn("google", { callbackUrl: "/#upload" });
+    if (status === "unauthenticated") {
+      setPromoError("請先登入 Google 帳號後再進行兌換");
       return;
     }
     if (!promoCode.trim()) {
@@ -471,13 +472,17 @@ export default function ScheduleUpload() {
         error?: string;
         message?: string;
         requiresAuth?: boolean;
+        isPaid?: boolean;
+        usage?: Usage;
       }) | null;
-      if (response.status === 401 || data?.requiresAuth) {
-        await signIn("google", { callbackUrl: "/#upload" });
+      if (response.status === 401 || data?.requiresAuth || data?.error === "auth") {
+        setPromoError("請先登入 Google 帳號後再進行兌換");
         return;
       }
-      if (!response.ok || !data?.token || data.paid !== true) {
-        setPromoError(promoFailureMessage(data?.error));
+      const paid = data?.paid === true || data?.isPaid === true || data?.usage?.paid === true;
+      const token = data?.token || data?.usage?.token;
+      if (!response.ok || !token || !paid) {
+        setPromoError(data?.message || promoFailureMessage(data?.error));
         return;
       }
       persistUsage(data);

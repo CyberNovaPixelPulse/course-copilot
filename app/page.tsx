@@ -1,8 +1,11 @@
 "use client";
 
+import { version } from "../package.json";
 import ScheduleUpload from "./components/ScheduleUpload";
 import { useI18n } from "@/lib/i18n";
 import { supportEmail } from "@/lib/site-contact";
+
+const BUILD_DATE = "2026.10.08";
 
 export default function Home() {
   const { t } = useI18n();
@@ -60,6 +63,9 @@ export default function Home() {
             </p>
           </address>
           <p className="max-w-2xl text-sm leading-7 text-stone-700">{pricingTerms}</p>
+          <p className="text-xs font-mono tracking-wide text-neutral-400">
+            v{version} · Build {BUILD_DATE}
+          </p>
         </div>
       </footer>
     </div>

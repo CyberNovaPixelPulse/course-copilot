@@ -91,6 +91,7 @@ export default function ScheduleUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<PreviewFile[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [calendarKey, setCalendarKey] = useState(0);
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -223,11 +224,15 @@ export default function ScheduleUpload() {
     if (images.length === 0) return;
 
     const requestId = ++parseRequestId.current;
+    showingSample.current = false;
+    setCalendarKey((key) => key + 1);
+    setCourses([]);
+    setExportSuccessOpen(false);
     setIsParsing(true);
     setError(null);
 
     try {
-      const parsed: Course[] = [];
+      const nextCourses: Course[] = [];
       for (const image of images) {
         const formData = new FormData();
         formData.append("image", image);
@@ -243,6 +248,7 @@ export default function ScheduleUpload() {
           requiresAuth?: boolean;
           requiresPayment?: boolean;
         };
+        if (requestId !== parseRequestId.current) return;
         if (response.status === 401 || data.requiresAuth) {
           await signIn("google", { callbackUrl: "/#upload" });
           return;
@@ -256,7 +262,7 @@ export default function ScheduleUpload() {
           throw new Error(data.error || t.upload.parseFailed);
         }
         if (data.usage) applyUsage(data.usage);
-        parsed.push(
+        nextCourses.push(
           ...(data.courses ?? []).map((course) => ({
             ...course,
             slots: course.slots || [],
@@ -264,11 +270,9 @@ export default function ScheduleUpload() {
         );
       }
       if (requestId !== parseRequestId.current) return;
-      showingSample.current = false;
-      setCourses(parsed);
+      setCourses(nextCourses);
     } catch (parseError) {
       if (requestId !== parseRequestId.current) return;
-      showingSample.current = false;
       setCourses([]);
       setError(
         parseError instanceof Error
@@ -680,7 +684,7 @@ export default function ScheduleUpload() {
               </p>
             </div>
           </div>
-          <WeeklyCalendar courses={courses} onChange={setCourses} />
+          <WeeklyCalendar key={calendarKey} courses={courses} onChange={setCourses} />
         </div>
       ) : null}
 

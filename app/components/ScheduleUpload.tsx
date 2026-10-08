@@ -55,41 +55,8 @@ function downloadIcsFile(ics: string, filename = "course-schedule.ics") {
   anchor.download = filename;
   document.body.appendChild(anchor);
   anchor.click();
-  anchor.remove();
+  document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
-}
-
-function isAppleMobile() {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  if (/iPad|iPhone|iPod/.test(ua)) return true;
-  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
-}
-
-function openIcsInAppleCalendar(courses: Course[]) {
-  const payload = JSON.stringify({
-    courses,
-    token: window.localStorage.getItem(STORAGE_KEY) ?? "",
-  });
-  const url = `/api/export-ics?d=${encodeURIComponent(payload)}`;
-  if (url.length <= 32000) {
-    const opened = window.open(url, "_blank");
-    if (opened) return;
-  }
-
-  const form = document.createElement("form");
-  form.method = "POST";
-  form.action = "/api/export-ics";
-  form.target = "_blank";
-  form.acceptCharset = "UTF-8";
-  const input = document.createElement("input");
-  input.type = "hidden";
-  input.name = "payload";
-  input.value = payload;
-  form.append(input);
-  document.body.append(form);
-  form.submit();
-  form.remove();
 }
 
 function persistUsage(usage: Usage) {
@@ -391,6 +358,7 @@ export default function ScheduleUpload() {
     try {
       const response = await fetch("/api/export-ics", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ courses }),
       });
@@ -414,15 +382,6 @@ export default function ScheduleUpload() {
       setShowPromoInput(false);
       setPromoError(null);
       setShowPaywall(true);
-      return;
-    }
-    if (isAppleMobile()) {
-      if (!signedIn) {
-        void signIn("google", { callbackUrl: "/#upload" });
-        return;
-      }
-      openIcsInAppleCalendar(courses);
-      setExportSuccessOpen(true);
       return;
     }
     void exportCalendar();

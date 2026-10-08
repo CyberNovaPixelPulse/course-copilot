@@ -1,3 +1,4 @@
+import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 import {
   COOKIE_NAME,
@@ -97,16 +98,37 @@ async function readExportPayload(request: NextRequest): Promise<{ courses: unkno
   return { courses: undefined, token: null };
 }
 
-async function exportIcs(request: NextRequest) {
+async function googleAccountId(request: NextRequest) {
   const session = await getGoogleSession();
-  if (!session?.user) {
+  const fromSession = session?.user?.id || session?.user?.email || "";
+  if (fromSession) return fromSession;
+
+  const secret = process.env.NEXTAUTH_SECRET;
+  const cookieNames = ["__Secure-next-auth.session-token", "next-auth.session-token"] as const;
+  for (const cookieName of cookieNames) {
+    const token = await getToken({
+      req: request,
+      secret,
+      cookieName,
+      secureCookie: cookieName.startsWith("__Secure-"),
+    });
+    const id =
+      (typeof token?.sub === "string" && token.sub) ||
+      (typeof token?.email === "string" && token.email) ||
+      "";
+    if (id) return id;
+  }
+  return "";
+}
+
+async function exportIcs(request: NextRequest) {
+  const googleId = await googleAccountId(request);
+  if (!googleId) {
     return NextResponse.json(
       { error: "Sign in with Google to download a calendar.", requiresAuth: true },
       { status: 401 },
     );
   }
-
-  const googleId = session.user.id || session.user.email || "";
   let payload: { courses: unknown; token: string | null };
   try {
     payload = await readExportPayload(request);

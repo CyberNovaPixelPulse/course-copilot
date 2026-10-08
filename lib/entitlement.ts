@@ -9,6 +9,14 @@ export const TOKEN_HEADER = "x-cc-token";
 export const STORAGE_KEY = "cc_entitlement_token";
 
 export type VisionModel = "gpt-4o" | "gpt-4o-mini";
+export type UnlockMethod = "paid" | "coupon";
+export type PaymentType = "paid" | "coupon" | "free";
+
+export type UsageBilling = {
+  payment_type: PaymentType;
+  fee_charged_twd: number;
+  coupon_code: string | null;
+};
 
 export type Entitlement = {
   userId: string;
@@ -16,6 +24,8 @@ export type Entitlement = {
   parseCount: number;
   gpt4oCount: number;
   paidAt?: number;
+  /** How this account first unlocked paid parsing. */
+  unlockMethod?: UnlockMethod;
   freeScansGranted?: boolean;
   freeScansUsed?: number;
   /** Extra high-precision parses granted by promo codes. */
@@ -74,6 +84,7 @@ export function decodeEntitlement(token: string | undefined | null): Entitlement
       parseCount: Number(parsed.parseCount) || 0,
       gpt4oCount: Number(parsed.gpt4oCount) || 0,
       paidAt: parsed.paidAt,
+      unlockMethod: parsed.unlockMethod === "paid" || parsed.unlockMethod === "coupon" ? parsed.unlockMethod : undefined,
       freeScansGranted: Boolean(parsed.freeScansGranted),
       freeScansUsed: Number(parsed.freeScansUsed) || 0,
       bonusCredits: Number(parsed.bonusCredits) || 0,
@@ -176,6 +187,7 @@ export function unlockWithPromo(entitlement: Entitlement, code: string): Entitle
     return {
       ...markPaid(entitlement),
       ...cleared,
+      unlockMethod: "coupon",
       gpt4oCount: 0,
       redeemedCodes,
     };
@@ -183,6 +195,7 @@ export function unlockWithPromo(entitlement: Entitlement, code: string): Entitle
   return {
     ...entitlement,
     ...cleared,
+    unlockMethod: entitlement.unlockMethod ?? "paid",
     bonusCredits: (Number(entitlement.bonusCredits) || 0) + GPT4O_CAP,
     redeemedCodes,
   };
@@ -193,7 +206,23 @@ export function markPaid(entitlement: Entitlement): Entitlement {
     ...entitlement,
     paid: true,
     paidAt: entitlement.paidAt ?? Date.now(),
+    unlockMethod: entitlement.unlockMethod ?? "paid",
   };
+}
+
+export function usageBilling(entitlement: Entitlement): UsageBilling {
+  if (!entitlement.paid) {
+    return { payment_type: "free", fee_charged_twd: 0, coupon_code: null };
+  }
+  const couponCode =
+    [...(entitlement.redeemedCodes ?? [])].reverse().find((code) => code.trim())?.trim() ?? null;
+  const unlockedWithCoupon =
+    entitlement.unlockMethod === "coupon" ||
+    (entitlement.unlockMethod !== "paid" && Boolean(couponCode));
+  if (unlockedWithCoupon) {
+    return { payment_type: "coupon", fee_charged_twd: 0, coupon_code: couponCode };
+  }
+  return { payment_type: "paid", fee_charged_twd: PLAN_PRICE_TWD, coupon_code: null };
 }
 
 export function withAccountId(entitlement: Entitlement, accountId: string): Entitlement {

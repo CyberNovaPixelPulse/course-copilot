@@ -8,8 +8,10 @@ import {
   readEntitlement,
   toUsagePublic,
   attachEntitlement,
+  usageBilling,
   withAccountId,
   withFreeScans,
+  type UsageBilling,
 } from "@/lib/entitlement";
 import { getGoogleSession } from "@/lib/session";
 import { WEEKDAYS, type Course, type CourseSlot } from "@/lib/types";
@@ -67,6 +69,10 @@ function mergeSlotsOnWeekday(slots: CourseSlot[]) {
   return merged;
 }
 
+function countEvents(courses: Course[]) {
+  return courses.reduce((total, course) => total + (course.slots?.length ?? 0), 0);
+}
+
 function mergeCourseSlots(course: Course): Course {
   const slots = dedupeSlots(Array.isArray(course.slots) ? course.slots : []);
   const byWeekday = new Map<string, CourseSlot[]>();
@@ -94,6 +100,9 @@ function mergeCourseSlots(course: Course): Course {
 }
 
 export async function POST(request: NextRequest) {
+  let billing: UsageBilling = { payment_type: "free", fee_charged_twd: 0, coupon_code: null };
+  let eventsCount = 0;
+  let mimeType = "";
   try {
     const session = await getGoogleSession();
     const authenticated = Boolean(session);
@@ -107,6 +116,7 @@ export async function POST(request: NextRequest) {
     let entitlement = readEntitlement(request);
     if (googleId) entitlement = withAccountId(entitlement, googleId);
     entitlement = withFreeScans(entitlement, true);
+    billing = usageBilling(entitlement);
     if (!entitlement.paid && freeScansRemaining(entitlement, true) <= 0) {
       const response = NextResponse.json(
         {
@@ -155,6 +165,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    mimeType = image.type;
     const buffer = Buffer.from(await image.arrayBuffer());
     const imagePayload = {
       mimeType: image.type,
@@ -171,6 +182,7 @@ export async function POST(request: NextRequest) {
         slots: Array.isArray(course.slots) ? course.slots : [],
       }),
     );
+    eventsCount = countEvents(courses);
     for (const call of parsedResult.calls) {
       logAiUsage({
         siteId: "course-copilot",
@@ -185,6 +197,10 @@ export async function POST(request: NextRequest) {
           courseCount: courses.length,
           periodCount: parsedResult.periods.length,
           paid: entitlement.paid,
+          payment_type: billing.payment_type,
+          fee_charged_twd: billing.fee_charged_twd,
+          coupon_code: billing.coupon_code,
+          events_count: eventsCount,
         },
       });
     }
@@ -201,6 +217,13 @@ export async function POST(request: NextRequest) {
       error && typeof error === "object" && Array.isArray((error as { aiCalls?: AiCallMetric[] }).aiCalls)
         ? (error as { aiCalls: AiCallMetric[] }).aiCalls
         : [];
+    const failureMeta = {
+      payment_type: billing.payment_type,
+      fee_charged_twd: billing.fee_charged_twd,
+      coupon_code: billing.coupon_code,
+      events_count: eventsCount,
+      mimeType: mimeType || undefined,
+    };
     if (calls.length === 0) {
       logAiUsage({
         siteId: "course-copilot",
@@ -209,7 +232,7 @@ export async function POST(request: NextRequest) {
         outputTokens: 0,
         latencyMs: 0,
         status: "error",
-        metadata: { message },
+        metadata: { message, ...failureMeta },
       });
     } else {
       for (const call of calls) {
@@ -220,7 +243,7 @@ export async function POST(request: NextRequest) {
           outputTokens: call.outputTokens,
           latencyMs: call.latencyMs,
           status: "success",
-          metadata: { stage: call.stage },
+          metadata: { stage: call.stage, ...failureMeta },
         });
       }
       logAiUsage({
@@ -230,7 +253,11 @@ export async function POST(request: NextRequest) {
         outputTokens: 0,
         latencyMs: 0,
         status: "error",
-        metadata: { message, completedStages: calls.map((call) => call.stage) },
+        metadata: {
+          message,
+          completedStages: calls.map((call) => call.stage),
+          ...failureMeta,
+        },
       });
     }
     const status = message.includes("OPENAI_API_KEY") ? 500 : 502;

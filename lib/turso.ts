@@ -13,7 +13,7 @@ export type AiUsageLog = {
 
 let client: Client | null = null;
 
-function turso(): Client {
+export function getTurso(): Client {
   if (client) return client;
   const url = process.env.TURSO_DATABASE_URL;
   const authToken = process.env.TURSO_AUTH_TOKEN;
@@ -25,7 +25,7 @@ function turso(): Client {
 }
 
 async function insertAiLog(entry: AiUsageLog) {
-  await turso().execute({
+  await getTurso().execute({
     sql: `INSERT INTO ai_logs (
             id, site_id, model, input_tokens, output_tokens, latency_ms, status, metadata
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,

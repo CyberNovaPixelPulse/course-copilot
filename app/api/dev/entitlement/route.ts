@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
         ...entitlement,
         paid: false,
         paidAt: undefined,
+        unlockMethod: undefined,
         devBonus: 0,
         devRemainingOverride: undefined,
       },

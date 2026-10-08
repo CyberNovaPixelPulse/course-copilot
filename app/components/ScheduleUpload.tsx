@@ -437,26 +437,35 @@ export default function ScheduleUpload() {
     }
   }
 
+  function promoFailureMessage(error?: string) {
+    if (error === "limit") return t.paywall.promoLimit ?? "優惠碼已達使用上限";
+    if (error === "expired") return t.paywall.promoExpired ?? "優惠碼已過期";
+    if (error === "unavailable") {
+      return t.paywall.promoUnavailable ?? "優惠碼暫時無法兌換，請稍後再試。";
+    }
+    return t.paywall.promoInvalid ?? "優惠碼無效或已停用";
+  }
+
   async function redeemPromo() {
-    const invalid = t.paywall.promoInvalid ?? "This promo code is invalid or expired.";
     if (!signedIn) {
       await signIn("google", { callbackUrl: "/#upload" });
       return;
     }
     if (!promoCode.trim()) {
-      setPromoError(invalid);
+      setPromoError(promoFailureMessage("inactive"));
       return;
     }
     setPromoLoading(true);
     setPromoError(null);
     try {
-      const response = await fetch("/api/promo/redeem", {
+      const response = await fetch("/api/coupon/redeem", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ code: promoCode }),
       });
       const data = (await response.json().catch(() => null)) as (Usage & {
         error?: string;
+        message?: string;
         requiresAuth?: boolean;
       }) | null;
       if (response.status === 401 || data?.requiresAuth) {
@@ -464,7 +473,7 @@ export default function ScheduleUpload() {
         return;
       }
       if (!response.ok || !data?.token || data.paid !== true) {
-        setPromoError(invalid);
+        setPromoError(promoFailureMessage(data?.error));
         return;
       }
       persistUsage(data);
@@ -475,7 +484,7 @@ export default function ScheduleUpload() {
       setShowPaywall(false);
       setRedeemNotice(t.paywall.promoSuccess ?? "Redeemed.");
     } catch {
-      setPromoError(invalid);
+      setPromoError(promoFailureMessage("unavailable"));
     } finally {
       setPromoLoading(false);
     }

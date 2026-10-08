@@ -112,6 +112,9 @@ export type Dictionary = {
     promoPlaceholder?: string;
     promoRedeem?: string;
     promoInvalid?: string;
+    promoLimit?: string;
+    promoExpired?: string;
+    promoUnavailable?: string;
     promoSuccess?: string;
   };
   calendar: {
@@ -250,7 +253,10 @@ const zhTW: Dictionary = {
     promoLabel: "輸入優惠碼 / 兌換碼",
     promoPlaceholder: "優惠碼",
     promoRedeem: "兌換",
-    promoInvalid: "優惠碼無效或已過期",
+    promoInvalid: "優惠碼無效或已停用",
+    promoLimit: "優惠碼已達使用上限",
+    promoExpired: "優惠碼已過期",
+    promoUnavailable: "優惠碼暫時無法兌換，請稍後再試。",
     promoSuccess: "兌換成功，已解鎖 30 次高精度解析與 .ics 下載。",
   },
   calendar: {
@@ -334,7 +340,10 @@ const zhCN: Dictionary = {
     promoLabel: "输入优惠码 / 兑换码",
     promoPlaceholder: "优惠码",
     promoRedeem: "兑换",
-    promoInvalid: "优惠码无效或已过期",
+    promoInvalid: "优惠码无效或已停用",
+    promoLimit: "优惠码已达使用上限",
+    promoExpired: "优惠码已过期",
+    promoUnavailable: "优惠码暂时无法兑换，请稍后再试。",
     promoSuccess: "兑换成功，已解锁 30 次高精度解析与 .ics 下载。",
   },
   calendar: {
@@ -439,7 +448,10 @@ const en: Dictionary = {
     promoLabel: "Enter Promo Code",
     promoPlaceholder: "Promo code",
     promoRedeem: "Redeem",
-    promoInvalid: "This promo code is invalid or expired.",
+    promoInvalid: "This promo code is invalid or disabled.",
+    promoLimit: "This promo code has reached its usage limit.",
+    promoExpired: "This promo code has expired.",
+    promoUnavailable: "This promo code cannot be redeemed right now. Try again later.",
     promoSuccess: "Redeemed. 30 high-precision parses and .ics downloads are unlocked.",
   },
   calendar: {

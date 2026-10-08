@@ -443,19 +443,10 @@ export default function ScheduleUpload() {
 
   function promoFailureMessage(error?: string) {
     if (error === "auth") return "請先登入 Google 帳號後再進行兌換";
-    if (error === "expired") return t.paywall.promoExpired ?? "優惠碼已過期";
-    if (error === "unavailable") {
-      return t.paywall.promoUnavailable ?? "優惠碼暫時無法兌換，請稍後再試。";
-    }
-    if (error === "inactive" || error === "limit") return "優惠碼無效或已被使用";
     return t.paywall.promoInvalid ?? "優惠碼無效或已被使用";
   }
 
   async function redeemPromo() {
-    if (status === "unauthenticated") {
-      setPromoError("請先登入 Google 帳號後再進行兌換");
-      return;
-    }
     if (!promoCode.trim()) {
       setPromoError(promoFailureMessage("inactive"));
       return;
@@ -491,7 +482,9 @@ export default function ScheduleUpload() {
       setPromoCode("");
       setPromoOpen(false);
       setShowPaywall(false);
-      setRedeemNotice(t.paywall.promoSuccess ?? "Redeemed.");
+      setRedeemNotice(
+        data.message?.trim() || (t.paywall.promoSuccess ?? "Redeemed."),
+      );
     } catch {
       setPromoError(promoFailureMessage("unavailable"));
     } finally {

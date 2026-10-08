@@ -6,6 +6,7 @@ import {
   type CouponRejection,
 } from "@/lib/coupons";
 import {
+  grantCreditCoupon,
   readEntitlement,
   toUsagePublic,
   unlockWithPromo,
@@ -69,11 +70,23 @@ export async function POST(request: NextRequest) {
     const redeemed = await redeemCoupon(code);
     if ("reason" in redeemed) return reject(redeemed.reason);
 
-    entitlement = unlockWithPromo(entitlement, redeemed.code);
+    const creditGrant =
+      redeemed.discountType === "credits" ? redeemed.discountValue : 0;
+    entitlement =
+      redeemed.discountType === "credits"
+        ? grantCreditCoupon(entitlement, redeemed.code, creditGrant)
+        : unlockWithPromo(entitlement, redeemed.code);
     const usage = toUsagePublic(entitlement, true);
     return usageResponse(
       entitlement,
-      { redeemed: true, isPaid: true, remainingCredits: usage.gpt4oRemaining },
+      {
+        redeemed: true,
+        isPaid: true,
+        remainingCredits: usage.gpt4oRemaining,
+        ...(redeemed.discountType === "credits"
+          ? { message: `成功兌換 ${creditGrant} 次解析額度！` }
+          : {}),
+      },
       true,
     );
   } catch (error) {

@@ -3,23 +3,25 @@ import { getTurso } from "@/lib/turso";
 
 export const COUPON_SITE_ID = "course-copilot";
 
-/** Single-use unlock codes for testing and friends. Stored uppercase. */
-export const PRESET_COUPON_CODES = [
-  "CAMPUS2026",
-  "STUDENTVIP",
-  "PASS2026",
-  "SPRING30",
-  "LUCKY30",
-] as const;
+/** Hardcoded unlock codes. Add a code here to enable it without a database row. */
+export const ACTIVE_COUPONS: readonly string[] = [];
 
 export type CouponRejection = "inactive" | "limit" | "expired";
 
 export type CouponRecord = {
   id: string;
   code: string;
+  discountType: string;
+  discountValue: number;
   maxUses: number;
   usedCount: number;
   expiresAt: string | null;
+};
+
+export type RedeemedCoupon = {
+  code: string;
+  discountType: string;
+  discountValue: number;
 };
 
 const REJECTION_MESSAGE: Record<CouponRejection, string> = {
@@ -28,14 +30,14 @@ const REJECTION_MESSAGE: Record<CouponRejection, string> = {
   expired: "優惠碼已過期",
 };
 
-const PRESET_CODES = new Set<string>(PRESET_COUPON_CODES);
+const LISTED_CODES = new Set(ACTIVE_COUPONS.map((code) => code.trim().toUpperCase()).filter(Boolean));
 
 export function normalizeCouponCode(value: string) {
   return value.trim().toUpperCase();
 }
 
-export function isPresetCoupon(code: string) {
-  return PRESET_CODES.has(normalizeCouponCode(code));
+export function isListedCoupon(code: string) {
+  return LISTED_CODES.has(normalizeCouponCode(code));
 }
 
 export function couponRejectionMessage(reason: CouponRejection) {
@@ -80,6 +82,8 @@ export async function findActiveCoupon(code: string): Promise<CouponRecord | nul
   return {
     id,
     code: asText(row.code).trim(),
+    discountType: asText(row.discount_type).trim().toLowerCase(),
+    discountValue: asNumber(row.discount_value, 0),
     maxUses: asNumber(row.max_uses, -1),
     usedCount: asNumber(row.used_count, 0),
     expiresAt: row.expires_at == null || row.expires_at === "" ? null : asText(row.expires_at),
@@ -94,15 +98,13 @@ export function rejectCoupon(coupon: CouponRecord, now = Date.now()): CouponReje
 
 export async function incrementCouponUse(id: string) {
   const result = await getTurso().execute({
-    sql: `UPDATE coupons
-          SET used_count = used_count + 1
-          WHERE id = ? AND is_active = 1 AND (max_uses = -1 OR used_count < max_uses)`,
+    sql: `UPDATE coupons SET used_count = used_count + 1 WHERE id = ?`,
     args: [id],
   });
   return result.rowsAffected > 0;
 }
 
-async function insertPresetCoupon(code: string) {
+async function insertListedCoupon(code: string) {
   await getTurso().execute({
     sql: `INSERT INTO coupons (id, code, site_id, discount_type, discount_value, max_uses, used_count, is_active)
           SELECT ?, ?, 'course-copilot', 'percent', 100, 1, 0, 1
@@ -113,9 +115,9 @@ async function insertPresetCoupon(code: string) {
   });
 }
 
-/** Marks a preset code redeemed. Succeeds only while it has never been used. */
-async function claimPresetCoupon(code: string) {
-  await insertPresetCoupon(code);
+/** Claims one global use of a code listed in ACTIVE_COUPONS. */
+async function claimListedCoupon(code: string) {
+  await insertListedCoupon(code);
   const result = await getTurso().execute({
     sql: `UPDATE coupons
           SET used_count = used_count + 1, is_active = 0
@@ -127,20 +129,29 @@ async function claimPresetCoupon(code: string) {
 
 export async function redeemCoupon(
   code: string,
-): Promise<{ code: string } | { reason: CouponRejection }> {
+): Promise<RedeemedCoupon | { reason: CouponRejection }> {
   const normalized = normalizeCouponCode(code);
   if (!normalized) return { reason: "inactive" };
 
-  if (isPresetCoupon(normalized)) {
-    const claimed = await claimPresetCoupon(normalized);
-    return claimed ? { code: normalized } : { reason: "limit" };
+  if (isListedCoupon(normalized)) {
+    const claimed = await claimListedCoupon(normalized);
+    return claimed
+      ? { code: normalized, discountType: "percent", discountValue: 100 }
+      : { reason: "limit" };
   }
 
   const coupon = await findActiveCoupon(normalized);
   if (!coupon) return { reason: "inactive" };
+  if (coupon.discountType === "credits" && !(coupon.discountValue > 0)) {
+    return { reason: "inactive" };
+  }
   const reason = rejectCoupon(coupon);
   if (reason) return { reason };
   const claimed = await incrementCouponUse(coupon.id);
   if (!claimed) return { reason: "limit" };
-  return { code: normalizeCouponCode(coupon.code) || normalized };
+  return {
+    code: normalizeCouponCode(coupon.code) || normalized,
+    discountType: coupon.discountType,
+    discountValue: coupon.discountValue,
+  };
 }

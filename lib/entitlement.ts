@@ -180,6 +180,33 @@ export function incrementParse(entitlement: Entitlement, model: VisionModel): En
   };
 }
 
+export function grantCreditCoupon(
+  entitlement: Entitlement,
+  code: string,
+  credits: number,
+): Entitlement {
+  const amount = Math.max(0, credits);
+  const redeemedCodes = [...(entitlement.redeemedCodes ?? []), code];
+  const next: Entitlement = {
+    ...entitlement,
+    paid: true,
+    paidAt: entitlement.paidAt ?? Date.now(),
+    unlockMethod: entitlement.paid ? (entitlement.unlockMethod ?? "paid") : "coupon",
+    redeemedCodes,
+    bonusCredits: (Number(entitlement.bonusCredits) || 0) + amount,
+  };
+  if (
+    process.env.NODE_ENV !== "production" &&
+    typeof entitlement.devRemainingOverride === "number"
+  ) {
+    next.devRemainingOverride = entitlement.devRemainingOverride + amount;
+  }
+  if (!entitlement.paid) {
+    next.bonusCredits = amount - GPT4O_CAP + (Number(entitlement.gpt4oCount) || 0);
+  }
+  return next;
+}
+
 export function unlockWithPromo(entitlement: Entitlement, code: string): Entitlement {
   const redeemedCodes = [...(entitlement.redeemedCodes ?? []), code];
   const cleared = { devBonus: 0, devRemainingOverride: undefined };

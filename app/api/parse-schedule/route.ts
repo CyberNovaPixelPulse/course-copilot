@@ -21,8 +21,8 @@ export const maxDuration = 120;
 
 const ACCEPTED_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const MAX_BYTES = 15 * 1024 * 1024;
-/** Break between consecutive periods, e.g. 09:35 then 09:45. */
-const BACK_TO_BACK_GAP_MINUTES = 15;
+/** Same course, same day: merge consecutive periods. Keep the first start and the last end. */
+const BACK_TO_BACK_GAP_MINUTES = 20;
 
 function timeToMinutes(value: string) {
   const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
   let eventsCount = 0;
   let mimeType = "";
 
-  function logParseCall(params: {
+  async function logParseCall(params: {
     model: string;
     inputTokens: number;
     outputTokens: number;
@@ -128,23 +128,28 @@ export async function POST(request: NextRequest) {
     step: number;
     metadata?: Record<string, unknown>;
   }) {
-    logAiUsage({
-      siteId: "course-copilot",
-      model: params.model,
-      inputTokens: params.inputTokens,
-      outputTokens: params.outputTokens,
-      latencyMs: params.latencyMs,
-      status: params.status,
-      metadata: {
-        ...params.metadata,
-        task_id: taskId,
-        step: params.step,
-        payment_type: billing.payment_type,
-        fee_charged_twd: billing.fee_charged_twd,
-        coupon_code: billing.coupon_code,
-        events_count: eventsCount,
-      },
-    });
+    try {
+      await logAiUsage({
+        siteId: "course-copilot",
+        model: params.model || "gpt-4o",
+        inputTokens: params.inputTokens,
+        outputTokens: params.outputTokens,
+        latencyMs: Math.round(params.latencyMs),
+        status: params.status,
+        metadata: {
+          ...params.metadata,
+          task_id: taskId,
+          step: params.step,
+          payment_type: billing.payment_type,
+          fee_charged_twd: billing.fee_charged_twd,
+          coupon_code: billing.coupon_code,
+          events_count: eventsCount,
+        },
+      });
+      console.log("[Turso Log Success]");
+    } catch (err) {
+      console.error("[Turso Log Error]", err);
+    }
   }
 
   try {
@@ -227,8 +232,8 @@ export async function POST(request: NextRequest) {
       }),
     );
     eventsCount = countEvents(courses);
-    parsedResult.calls.forEach((call, index) => {
-      logParseCall({
+    for (const [index, call] of parsedResult.calls.entries()) {
+      await logParseCall({
         model: call.model,
         inputTokens: call.inputTokens,
         outputTokens: call.outputTokens,
@@ -243,7 +248,7 @@ export async function POST(request: NextRequest) {
           paid: entitlement.paid,
         },
       });
-    });
+    }
 
     const next = entitlement.paid ? incrementParse(entitlement, "gpt-4o") : consumeFreeScan(entitlement);
     const usage = toUsagePublic(next, authenticated);
@@ -259,7 +264,7 @@ export async function POST(request: NextRequest) {
         : [];
     const failureMeta = { message, mimeType: mimeType || undefined };
     if (calls.length === 0) {
-      logParseCall({
+      await logParseCall({
         model: "gpt-4o",
         inputTokens: 0,
         outputTokens: 0,
@@ -269,8 +274,8 @@ export async function POST(request: NextRequest) {
         metadata: failureMeta,
       });
     } else {
-      calls.forEach((call, index) => {
-        logParseCall({
+      for (const [index, call] of calls.entries()) {
+        await logParseCall({
           model: call.model,
           inputTokens: call.inputTokens,
           outputTokens: call.outputTokens,
@@ -279,8 +284,8 @@ export async function POST(request: NextRequest) {
           step: index + 1,
           metadata: { stage: call.stage, mimeType: mimeType || undefined },
         });
-      });
-      logParseCall({
+      }
+      await logParseCall({
         model: "gpt-4o",
         inputTokens: 0,
         outputTokens: 0,

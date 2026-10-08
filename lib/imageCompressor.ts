@@ -1,9 +1,6 @@
-/** Longest side. 1024px is two 512px tiles. */
-export const MAX_LONG_EDGE = 1024;
-/** Shortest side stays in the 512–768px band so a 1024×768 image is four tiles. */
-export const MIN_SHORT_EDGE = 512;
-export const MAX_SHORT_EDGE = 768;
-export const JPEG_QUALITY = 0.85;
+/** Shrink only when the longest side is above this. Smaller images stay at their original size. */
+export const MAX_LONG_EDGE = 1800;
+export const JPEG_QUALITY = 0.92;
 
 export type PixelRect = {
   x: number;
@@ -15,29 +12,12 @@ export type PixelRect = {
 export function fittedSize(width: number, height: number) {
   let nextWidth = Math.max(1, width);
   let nextHeight = Math.max(1, height);
-
-  const fitLongest = Math.max(nextWidth, nextHeight);
-  if (fitLongest > MAX_LONG_EDGE) {
-    const scale = MAX_LONG_EDGE / fitLongest;
+  const longest = Math.max(nextWidth, nextHeight);
+  if (longest > MAX_LONG_EDGE) {
+    const scale = MAX_LONG_EDGE / longest;
     nextWidth *= scale;
     nextHeight *= scale;
   }
-
-  const tooTallShort = Math.min(nextWidth, nextHeight);
-  if (tooTallShort > MAX_SHORT_EDGE) {
-    const scale = MAX_SHORT_EDGE / tooTallShort;
-    nextWidth *= scale;
-    nextHeight *= scale;
-  }
-
-  const shortEdge = Math.min(nextWidth, nextHeight);
-  const longEdge = Math.max(nextWidth, nextHeight);
-  if (shortEdge < MIN_SHORT_EDGE) {
-    const scale = Math.min(MIN_SHORT_EDGE / shortEdge, MAX_LONG_EDGE / longEdge);
-    nextWidth *= scale;
-    nextHeight *= scale;
-  }
-
   return {
     width: Math.max(1, Math.round(nextWidth)),
     height: Math.max(1, Math.round(nextHeight)),
@@ -87,6 +67,8 @@ export async function compressScheduleImage(file: Blob, source?: PixelRect) {
     canvas.height = size.height;
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Could not compress image.");
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
     context.drawImage(
       image,
       Math.max(0, crop.x),

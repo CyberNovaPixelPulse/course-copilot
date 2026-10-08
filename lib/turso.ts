@@ -18,6 +18,7 @@ export function getTurso(): Client {
   const url = process.env.TURSO_DATABASE_URL;
   const authToken = process.env.TURSO_AUTH_TOKEN;
   if (!url || !authToken) {
+    console.warn("[Turso] Missing TURSO_DATABASE_URL or TURSO_AUTH_TOKEN.");
     throw new Error("Missing TURSO_DATABASE_URL or TURSO_AUTH_TOKEN.");
   }
   client = createClient({ url, authToken });
@@ -42,14 +43,7 @@ async function insertAiLog(entry: AiUsageLog) {
   });
 }
 
-/** Writes one AI call in the background. Failures are logged and do not reject. */
-export function logAiUsage(entry: AiUsageLog) {
-  void (async () => {
-    try {
-      await insertAiLog(entry);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[turso] ai log write failed: ${message}`);
-    }
-  })();
+/** Writes one AI call and waits until Turso accepts it. */
+export async function logAiUsage(entry: AiUsageLog) {
+  await insertAiLog(entry);
 }

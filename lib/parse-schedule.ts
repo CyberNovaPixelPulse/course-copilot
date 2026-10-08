@@ -35,9 +35,14 @@ export type VisionModel = "gpt-4o" | "gpt-4o-mini";
 const COURSE_PROMPT = `Return only the JSON object. No explanation.
 Each class meeting is one object with only name, day, start, end, room.
 day: 1 Monday, 2 Tuesday, 3 Wednesday, 4 Thursday, 5 Friday, 6 Saturday, 7 Sunday.
-start and end are HH:mm copied from the image. Do not round.
-room is the classroom, or "".
-{"courses":[{"name":"","day":1,"start":"08:10","end":"09:00","room":""}]}`;
+room is the classroom printed in that cell, or "".
+
+Time anchor: read the leftmost time or period column and the weekday headers on top before any cell.
+start and end are the HH:mm digits printed for that row. If the header prints 08:45, start is 08:45. Do not rewrite it as 08:00 or 08:10, and do not snap to a standard timetable.
+A course name that fills consecutive period rows on the same day is one object: start is the first row's printed start, end is the last row's printed end.
+
+Omit empty cells. Do not invent a course, time, day, or room that is not printed in the grid.
+{"courses":[{"name":"","day":1,"start":"08:45","end":"09:35","room":""}]}`;
 
 const MAX_PERIOD_GAP_MINUTES = 20;
 
@@ -328,7 +333,10 @@ export async function extractScheduleCourses(params: {
       {
         role: "user",
         content: [
-          { type: "text", text: "Extract the courses." },
+          {
+            type: "text",
+            text: "Read the printed time column and weekday headers first. Copy those HH:mm values. Omit anything that is not printed in a cell.",
+          },
           imagePart(params.mimeType, params.base64),
         ],
       },

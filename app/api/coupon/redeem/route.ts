@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  COUPON_SITE_ID,
   couponRejectionMessage,
   normalizeCouponCode,
   redeemCoupon,
@@ -47,12 +48,15 @@ export async function POST(request: NextRequest) {
   }
 
   let raw = "";
+  let siteId = COUPON_SITE_ID;
   try {
-    const body = (await request.json()) as { code?: unknown };
+    const body = (await request.json()) as { code?: unknown; site_id?: unknown };
     if (typeof body.code === "string") raw = body.code;
+    if (typeof body.site_id === "string" && body.site_id.trim()) siteId = body.site_id.trim();
   } catch {
     raw = "";
   }
+  if (siteId !== COUPON_SITE_ID) return reject("inactive");
 
   const code = normalizeCouponCode(raw);
   if (!code) return reject("inactive");

@@ -125,6 +125,8 @@ export type Dictionary = {
     keepFree: string;
     checkoutError: string;
     promoLabel?: string;
+    promoToggle?: string;
+    promoCollapse?: string;
     promoPlaceholder?: string;
     promoRedeem?: string;
     promoInvalid?: string;
@@ -132,6 +134,10 @@ export type Dictionary = {
     promoExpired?: string;
     promoUnavailable?: string;
     promoSuccess?: string;
+    unlockTitle?: string;
+    unlockSubmit?: string;
+    unlockCancel?: string;
+    unlockPay?: string;
   };
   calendar: {
     edit: string;
@@ -283,6 +289,8 @@ const zhTW: Dictionary = {
     keepFree: "繼續免費預覽",
     checkoutError: "無法開啟綠界付款頁面。",
     promoLabel: "輸入優惠碼 / 兌換碼",
+    promoToggle: "有優惠碼？點此兌換",
+    promoCollapse: "收合優惠碼",
     promoPlaceholder: "優惠碼",
     promoRedeem: "兌換",
     promoInvalid: "優惠碼無效或已被使用",
@@ -290,6 +298,10 @@ const zhTW: Dictionary = {
     promoExpired: "優惠碼已過期",
     promoUnavailable: "優惠碼暫時無法兌換，請稍後再試。",
     promoSuccess: "兌換成功，已解鎖 30 次高精度解析與 .ics 下載。",
+    unlockTitle: "輸入優惠碼解鎖完整課表下載",
+    unlockSubmit: "確認送出",
+    unlockCancel: "取消",
+    unlockPay: "前往付費",
   },
   calendar: {
     edit: "編輯課程",
@@ -372,6 +384,8 @@ const zhCN: Dictionary = {
     keepFree: "继续免费预览",
     checkoutError: "无法打开绿界付款页面。",
     promoLabel: "输入优惠码 / 兑换码",
+    promoToggle: "有优惠码？点此兑换",
+    promoCollapse: "收起优惠码",
     promoPlaceholder: "优惠码",
     promoRedeem: "兑换",
     promoInvalid: "优惠码无效或已停用",
@@ -379,6 +393,10 @@ const zhCN: Dictionary = {
     promoExpired: "优惠码已过期",
     promoUnavailable: "优惠码暂时无法兑换，请稍后再试。",
     promoSuccess: "兑换成功，已解锁 30 次高精度解析与 .ics 下载。",
+    unlockTitle: "输入优惠码解锁完整课表下载",
+    unlockSubmit: "确认提交",
+    unlockCancel: "取消",
+    unlockPay: "前往付费",
   },
   calendar: {
     edit: "编辑课程",
@@ -496,6 +514,8 @@ const en: Dictionary = {
     keepFree: "Keep free preview",
     checkoutError: "Could not start ECPay checkout.",
     promoLabel: "Enter Promo Code",
+    promoToggle: "Have a promo code? Redeem it here",
+    promoCollapse: "Hide promo code",
     promoPlaceholder: "Promo code",
     promoRedeem: "Redeem",
     promoInvalid: "This promo code is invalid or disabled.",
@@ -503,6 +523,10 @@ const en: Dictionary = {
     promoExpired: "This promo code has expired.",
     promoUnavailable: "This promo code cannot be redeemed right now. Try again later.",
     promoSuccess: "Redeemed. 30 high-precision parses and .ics downloads are unlocked.",
+    unlockTitle: "Enter a promo code to unlock the full schedule download",
+    unlockSubmit: "Redeem",
+    unlockCancel: "Cancel",
+    unlockPay: "Go to checkout",
   },
   calendar: {
     edit: "Edit class",
@@ -597,6 +621,12 @@ const ja: Dictionary = {
     paying: "ECPay へ移動しています…",
     keepFree: "無料プレビューを続ける",
     checkoutError: "ECPay の支払いページを開けませんでした。",
+    promoToggle: "クーポンをお持ちですか？こちらで引き換え",
+    promoCollapse: "クーポン入力を閉じる",
+    unlockTitle: "クーポンで時間割のダウンロードを解除",
+    unlockSubmit: "確認して送信",
+    unlockCancel: "キャンセル",
+    unlockPay: "支払う",
   },
   calendar: {
     edit: "授業を編集",
@@ -671,6 +701,12 @@ const ko: Dictionary = {
     paying: "ECPay로 이동 중…",
     keepFree: "무료 미리보기 계속",
     checkoutError: "ECPay 결제 페이지를 열 수 없습니다.",
+    promoToggle: "쿠폰이 있으신가요? 여기에서 등록",
+    promoCollapse: "쿠폰 입력 접기",
+    unlockTitle: "쿠폰으로 시간표 다운로드 잠금 해제",
+    unlockSubmit: "확인",
+    unlockCancel: "취소",
+    unlockPay: "결제하기",
   },
   calendar: {
     edit: "수업 편집",

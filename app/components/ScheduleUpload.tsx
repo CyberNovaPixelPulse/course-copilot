@@ -101,7 +101,7 @@ export default function ScheduleUpload() {
   const signedIn = status === "authenticated";
   const [showPaywall, setShowPaywall] = useState(false);
   const [checkoutTarget, setCheckoutTarget] = useState<"ecpay" | "stripe" | null>(null);
-  const [promoOpen, setPromoOpen] = useState(false);
+  const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoLoading, setPromoLoading] = useState(false);
@@ -354,11 +354,7 @@ export default function ScheduleUpload() {
     });
   }
 
-  async function handleDownload() {
-    if (usage?.paid !== true) {
-      setShowPaywall(true);
-      return;
-    }
+  async function exportCalendar() {
     try {
       const response = await fetch("/api/export-ics", {
         method: "POST",
@@ -378,6 +374,16 @@ export default function ScheduleUpload() {
     } catch {
       setError(t.upload.icsError);
     }
+  }
+
+  function handleDownload() {
+    if (usage?.paid !== true) {
+      setShowPromoInput(false);
+      setPromoError(null);
+      setShowPaywall(true);
+      return;
+    }
+    void exportCalendar();
   }
 
   async function startEcpayCheckout() {
@@ -459,7 +465,7 @@ export default function ScheduleUpload() {
       const response = await fetch("/api/coupon/redeem", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ code: promoCode }),
+        body: JSON.stringify({ code: promoCode, site_id: "course-copilot" }),
       });
       const data = (await response.json().catch(() => null)) as (Usage & {
         error?: string;
@@ -482,7 +488,7 @@ export default function ScheduleUpload() {
       setUsage(data);
       window.dispatchEvent(new CustomEvent(USAGE_UPDATED_EVENT, { detail: data }));
       setPromoCode("");
-      setPromoOpen(false);
+      setShowPromoInput(false);
       setShowPaywall(false);
       setRedeemNotice(
         data.message?.trim() || (t.paywall.promoSuccess ?? "Redeemed."),
@@ -743,7 +749,11 @@ export default function ScheduleUpload() {
       {showPaywall ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 p-4"
-          onClick={() => setShowPaywall(false)}
+          onClick={() => {
+            setShowPaywall(false);
+            setShowPromoInput(false);
+            setPromoError(null);
+          }}
         >
           <div
             className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl"
@@ -789,16 +799,18 @@ export default function ScheduleUpload() {
             <div className="mt-4 border-t border-stone-100 pt-3">
               <button
                 type="button"
-                aria-expanded={promoOpen}
+                aria-expanded={showPromoInput}
                 onClick={() => {
-                  setPromoOpen((open) => !open);
+                  setShowPromoInput((open) => !open);
                   setPromoError(null);
                 }}
-                className="text-sm font-medium text-indigo-700 hover:text-indigo-500"
+                className="cursor-pointer text-sm text-slate-500 underline transition-colors hover:text-slate-800"
               >
-                {t.paywall.promoLabel ?? "Enter Promo Code"}
+                {showPromoInput
+                  ? (t.paywall.promoCollapse ?? "收合優惠碼")
+                  : (t.paywall.promoToggle ?? "有優惠碼？點此兌換")}
               </button>
-              {promoOpen ? (
+              {showPromoInput ? (
                 <form
                   className="mt-3 flex gap-2"
                   onSubmit={(event) => {
@@ -812,7 +824,7 @@ export default function ScheduleUpload() {
                       setPromoCode(event.target.value);
                       setPromoError(null);
                     }}
-                    placeholder={t.paywall.promoPlaceholder ?? "Promo code"}
+                    placeholder={t.paywall.promoPlaceholder ?? "優惠碼"}
                     aria-label={t.paywall.promoLabel ?? "Enter Promo Code"}
                     autoComplete="off"
                     spellCheck={false}
@@ -835,7 +847,11 @@ export default function ScheduleUpload() {
             </div>
             <button
               type="button"
-              onClick={() => setShowPaywall(false)}
+              onClick={() => {
+                setShowPaywall(false);
+                setShowPromoInput(false);
+                setPromoError(null);
+              }}
               className="mt-2 w-full rounded-full px-4 py-2 text-sm text-stone-500 hover:bg-stone-50"
             >
               {t.paywall.keepFree}

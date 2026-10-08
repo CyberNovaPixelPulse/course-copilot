@@ -105,6 +105,9 @@ export type Dictionary = {
     shareTitle?: string;
     shareSubtitle?: string;
     shareCopy?: string;
+    appleCalendar?: string;
+    appleCalendarHint?: string;
+    appleCalendarOpenIn?: string;
     shareCopied?: string;
     shareDownloadCard?: string;
     shareClose?: string;
@@ -268,6 +271,10 @@ const zhTW: Dictionary = {
     shareTitle: "課表已成功下載至您的裝置！",
     shareSubtitle: "覺得好用嗎？分享給系上同學，一起免手動抄課表 🚀",
     shareCopy: "複製推薦連結",
+    appleCalendar: "📱 加入 iPhone / Apple 日曆",
+    appleCalendarHint:
+      "💡 iPhone 用戶：點擊下方黑色通知列的【開啟方式...】，選擇【行事曆】即可一鍵加入全部課程！",
+    appleCalendarOpenIn: "開啟方式...",
     shareCopied: "已複製分享文案！",
     shareDownloadCard: "下載分享圖卡",
     shareClose: "完成關閉",
@@ -372,6 +379,10 @@ const zhCN: Dictionary = {
     addCourse: "＋ 添加课程",
     sampleDataPrompt: "没有课程表？点击加载示例课程表体验",
     trySample: "没有课程表？点击加载示例课程表体验",
+    appleCalendar: "📱 加入 iPhone / Apple 日历",
+    appleCalendarHint:
+      "💡 iPhone 用户：点按下方黑色通知栏的【打开方式...】，选择【日历】即可一次加入全部课程！",
+    appleCalendarOpenIn: "打开方式...",
   },
   paywall: {
     title: "解锁日历导出",
@@ -493,6 +504,10 @@ const en: Dictionary = {
     shareTitle: "Your schedule is on your device!",
     shareSubtitle: "Like it? Share it with your classmates and skip the manual typing. 🚀",
     shareCopy: "Copy referral link",
+    appleCalendar: "📱 Add to iPhone / Apple Calendar",
+    appleCalendarHint:
+      "💡 iPhone: tap Open in… on the black download bar, then choose Calendar to add every course at once.",
+    appleCalendarOpenIn: "Open in…",
     shareCopied: "Share text copied!",
     shareDownloadCard: "Download share card",
     shareClose: "Done",
@@ -603,6 +618,10 @@ const ja: Dictionary = {
     shareTitle: "時間割を端末に保存しました！",
     shareSubtitle: "便利だと思ったら、学科の友達にもシェアして、手入力から解放されましょう 🚀",
     shareCopy: "紹介リンクをコピー",
+    appleCalendar: "📱 iPhone / Apple カレンダーに追加",
+    appleCalendarHint:
+      "💡 iPhone：下の黒い通知バーで【共有…】をタップし、【カレンダー】を選ぶと全授業を一度に追加できます。",
+    appleCalendarOpenIn: "共有…",
     shareCopied: "シェア文をコピーしました！",
     shareDownloadCard: "シェア画像を保存",
     shareClose: "完了して閉じる",
@@ -692,6 +711,10 @@ const ko: Dictionary = {
     icsError: "캘린더 파일을 만들지 못했습니다. 시간을 확인한 뒤 다시 시도하세요.",
     addCourse: "+ 수업 추가",
     sampleDataPrompt: "시간표가 없으신가요? 샘플 데이터로 체험하기",
+    appleCalendar: "📱 iPhone / Apple 캘린더에 추가",
+    appleCalendarHint:
+      "💡 iPhone: 아래 검은색 다운로드 막대에서 【다음으로 열기…】를 누른 뒤 【캘린더】를 선택하면 모든 수업이 한 번에 추가됩니다.",
+    appleCalendarOpenIn: "다음으로 열기…",
   },
   paywall: {
     title: "캘린더 내보내기 잠금 해제",

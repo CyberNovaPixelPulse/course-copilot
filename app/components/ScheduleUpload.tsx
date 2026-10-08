@@ -110,6 +110,7 @@ export default function ScheduleUpload() {
   const [currencyOverride, setCurrencyOverride] = useState<CurrencyCode | null>(null);
   const [cropQueue, setCropQueue] = useState<File[]>([]);
   const [exportSuccessOpen, setExportSuccessOpen] = useState(false);
+  const [exportedIcs, setExportedIcs] = useState("");
   const [addCourseOpen, setAddCourseOpen] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const preparedBatch = useRef<File[]>([]);
@@ -370,7 +371,9 @@ export default function ScheduleUpload() {
         setShowPaywall(true);
         return;
       }
-      downloadIcsFile(await response.text());
+      const ics = await response.text();
+      setExportedIcs(ics);
+      downloadIcsFile(ics);
       setExportSuccessOpen(true);
     } catch {
       setError(t.upload.icsError);
@@ -715,7 +718,11 @@ export default function ScheduleUpload() {
       ) : null}
 
       {exportSuccessOpen ? (
-        <ExportSuccessModal courses={courses} onClose={() => setExportSuccessOpen(false)} />
+        <ExportSuccessModal
+          courses={courses}
+          ics={exportedIcs}
+          onClose={() => setExportSuccessOpen(false)}
+        />
       ) : null}
 
       {cropQueue[0] ? (

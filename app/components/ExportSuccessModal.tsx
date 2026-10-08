@@ -8,11 +8,24 @@ import type { Course } from "@/lib/types";
 const FALLBACK_MESSAGE =
   "Okay this is unreal — screenshot your schedule and it drops straight into iPhone/Google Calendar in one second. No more typing it in by hand! 👉 https://ics.necterelux.com";
 
+const APPLE_CALENDAR_LABEL = "📱 加入 iPhone / Apple 日曆";
+const APPLE_CALENDAR_HINT =
+  "💡 iPhone 用戶：點擊下方黑色通知列的【開啟方式...】，選擇【行事曆】即可一鍵加入全部課程！";
+
+function isIos() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+}
+
 export default function ExportSuccessModal({
   courses,
+  ics,
   onClose,
 }: {
   courses: Course[];
+  ics: string;
   onClose: () => void;
 }) {
   const { t } = useI18n();
@@ -77,6 +90,11 @@ export default function ExportSuccessModal({
     setCopied(true);
   }
 
+  function addToAppleCalendar() {
+    if (!isIos() || !ics) return;
+    window.location.href = `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
+  }
+
   function downloadCard() {
     const blob = blobRef.current;
     if (!blob) return;
@@ -112,7 +130,7 @@ export default function ExportSuccessModal({
         </div>
 
         <div className="grid min-h-0 flex-1 gap-5 overflow-auto px-5 py-4 sm:px-6 md:grid-cols-[220px_minmax(0,1fr)]">
-          <div className="mx-auto w-full max-w-[220px]">
+          <div className="order-2 mx-auto w-full max-w-[220px] md:order-1">
             {cardUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -125,7 +143,26 @@ export default function ExportSuccessModal({
             )}
           </div>
 
-          <div className="flex min-w-0 flex-col gap-3">
+          <div className="order-1 flex min-w-0 flex-col gap-3 md:order-2">
+            <p className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium leading-6 text-amber-950">
+              {t.upload.appleCalendarHint ?? APPLE_CALENDAR_HINT}
+            </p>
+            <button
+              type="button"
+              onClick={addToAppleCalendar}
+              className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+            >
+              {t.upload.appleCalendar ?? APPLE_CALENDAR_LABEL}
+            </button>
+            <div
+              aria-hidden="true"
+              className="flex items-center gap-2 rounded-xl bg-stone-900 px-3 py-2 text-xs text-white"
+            >
+              <span className="min-w-0 flex-1 truncate">course-schedule.ics</span>
+              <span className="shrink-0 rounded-md bg-white/15 px-2 py-1 font-semibold">
+                {t.upload.appleCalendarOpenIn ?? "開啟方式..."}
+              </span>
+            </div>
             <p className="rounded-2xl bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-700">{message}</p>
             {copied ? (
               <p

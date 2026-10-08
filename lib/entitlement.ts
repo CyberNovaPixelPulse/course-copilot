@@ -18,6 +18,9 @@ export type Entitlement = {
   paidAt?: number;
   freeScansGranted?: boolean;
   freeScansUsed?: number;
+  /** Extra high-precision parses granted by promo codes. */
+  bonusCredits?: number;
+  redeemedCodes?: string[];
   /** Development-only extra credits. Ignored in production. */
   devBonus?: number;
   /** Development-only displayed remaining override. Ignored in production. */
@@ -73,6 +76,10 @@ export function decodeEntitlement(token: string | undefined | null): Entitlement
       paidAt: parsed.paidAt,
       freeScansGranted: Boolean(parsed.freeScansGranted),
       freeScansUsed: Number(parsed.freeScansUsed) || 0,
+      bonusCredits: Number(parsed.bonusCredits) || 0,
+      redeemedCodes: Array.isArray(parsed.redeemedCodes)
+        ? parsed.redeemedCodes.filter((code): code is string => typeof code === "string")
+        : [],
       devBonus: Number(parsed.devBonus) || 0,
       devRemainingOverride:
         typeof parsed.devRemainingOverride === "number" && Number.isFinite(parsed.devRemainingOverride)
@@ -93,8 +100,12 @@ export function emptyEntitlement(): Entitlement {
   };
 }
 
+export function gpt4oAllowance(entitlement: Entitlement): number {
+  return GPT4O_CAP + (Number(entitlement.bonusCredits) || 0);
+}
+
 export function selectModel(entitlement: Entitlement, authenticated = false): VisionModel {
-  return authenticated && entitlement.paid && entitlement.gpt4oCount < GPT4O_CAP
+  return authenticated && entitlement.paid && entitlement.gpt4oCount < gpt4oAllowance(entitlement)
     ? "gpt-4o"
     : "gpt-4o-mini";
 }
@@ -138,7 +149,10 @@ export function toUsagePublic(entitlement: Entitlement, authenticated = false): 
     gpt4oCount: entitlement.gpt4oCount,
     gpt4oRemaining:
       authenticated && entitlement.paid
-        ? devCreditAdjust(Math.max(0, GPT4O_CAP - entitlement.gpt4oCount), entitlement)
+        ? devCreditAdjust(
+            Math.max(0, gpt4oAllowance(entitlement) - entitlement.gpt4oCount),
+            entitlement,
+          )
         : 0,
     freeScansRemaining: freeScansRemaining(entitlement, authenticated),
     canExportIcs: authenticated && entitlement.paid,
@@ -152,6 +166,25 @@ export function incrementParse(entitlement: Entitlement, model: VisionModel): En
     ...entitlement,
     parseCount: entitlement.parseCount + 1,
     gpt4oCount: model === "gpt-4o" ? entitlement.gpt4oCount + 1 : entitlement.gpt4oCount,
+  };
+}
+
+export function unlockWithPromo(entitlement: Entitlement, code: string): Entitlement {
+  const redeemedCodes = [...(entitlement.redeemedCodes ?? []), code];
+  const cleared = { devBonus: 0, devRemainingOverride: undefined };
+  if (!entitlement.paid) {
+    return {
+      ...markPaid(entitlement),
+      ...cleared,
+      gpt4oCount: 0,
+      redeemedCodes,
+    };
+  }
+  return {
+    ...entitlement,
+    ...cleared,
+    bonusCredits: (Number(entitlement.bonusCredits) || 0) + GPT4O_CAP,
+    redeemedCodes,
   };
 }
 

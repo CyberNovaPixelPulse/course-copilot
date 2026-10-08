@@ -419,14 +419,40 @@ export function normalizeCourses(
   }));
 }
 
+export type AiCallMetric = {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  stage: string;
+};
+
+function metricFrom(
+  completion: {
+    model?: string;
+    usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
+  },
+  started: number,
+  stage: string,
+): AiCallMetric {
+  return {
+    model: completion.model || "gpt-4o",
+    inputTokens: completion.usage?.prompt_tokens ?? 0,
+    outputTokens: completion.usage?.completion_tokens ?? 0,
+    latencyMs: Date.now() - started,
+    stage,
+  };
+}
+
 export async function extractScheduleTimeMap(params: {
   mimeType: string;
   base64: string;
   model?: VisionModel;
-}): Promise<PeriodTime[]> {
+}): Promise<{ periods: PeriodTime[]; call: AiCallMetric }> {
   const modelName = params.model ?? "gpt-4o";
   console.log("Currently using model:", modelName);
   const openai = openaiClient();
+  const started = Date.now();
   const completion = await openai.chat.completions.create({
     model: "gpt-4o",
     temperature: 0,
@@ -453,7 +479,10 @@ export async function extractScheduleTimeMap(params: {
     ],
   });
 
-  return normalizePeriodMap(await parseJsonContent(completion.choices[0]?.message?.content));
+  return {
+    periods: normalizePeriodMap(await parseJsonContent(completion.choices[0]?.message?.content)),
+    call: metricFrom(completion, started, "period-map"),
+  };
 }
 
 export async function extractScheduleCourses(params: {
@@ -461,10 +490,11 @@ export async function extractScheduleCourses(params: {
   base64: string;
   periods: PeriodTime[];
   model?: VisionModel;
-}): Promise<Course[]> {
+}): Promise<{ courses: Course[]; call: AiCallMetric }> {
   const modelName = params.model ?? "gpt-4o";
   console.log("Currently using model:", modelName);
   const openai = openaiClient();
+  const started = Date.now();
   const completion = await openai.chat.completions.create({
     model: "gpt-4o",
     temperature: 0,
@@ -491,19 +521,32 @@ export async function extractScheduleCourses(params: {
     ],
   });
 
-  return normalizeCourses(
-    await parseJsonContent(completion.choices[0]?.message?.content),
-    params.periods,
-  );
+  return {
+    courses: normalizeCourses(
+      await parseJsonContent(completion.choices[0]?.message?.content),
+      params.periods,
+    ),
+    call: metricFrom(completion, started, "courses"),
+  };
 }
 
 export async function parseScheduleImage(params: {
   mimeType: string;
   base64: string;
   model?: VisionModel;
-}): Promise<{ courses: Course[]; periods: PeriodTime[] }> {
+}): Promise<{ courses: Course[]; periods: PeriodTime[]; calls: AiCallMetric[] }> {
   const model = params.model ?? "gpt-4o";
-  const periods = await extractScheduleTimeMap({ ...params, model });
-  const courses = await extractScheduleCourses({ ...params, periods, model });
-  return { courses, periods };
+  const calls: AiCallMetric[] = [];
+  try {
+    const mapped = await extractScheduleTimeMap({ ...params, model });
+    calls.push(mapped.call);
+    const parsed = await extractScheduleCourses({ ...params, periods: mapped.periods, model });
+    calls.push(parsed.call);
+    return { courses: parsed.courses, periods: mapped.periods, calls };
+  } catch (error) {
+    if (error && typeof error === "object") {
+      (error as { aiCalls?: AiCallMetric[] }).aiCalls = calls;
+    }
+    throw error;
+  }
 }

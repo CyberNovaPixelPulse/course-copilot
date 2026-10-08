@@ -57,7 +57,6 @@ export type Dictionary = {
     description: string;
     footer: string;
     supportEmailLine?: (email: string) => string;
-    supportPhoneLine?: (phone: string) => string;
     pricingTerms?: string;
     steps: { index: string; title: string; body: string }[];
   };
@@ -109,6 +108,11 @@ export type Dictionary = {
     payingStripe?: string;
     keepFree: string;
     checkoutError: string;
+    promoLabel?: string;
+    promoPlaceholder?: string;
+    promoRedeem?: string;
+    promoInvalid?: string;
+    promoSuccess?: string;
   };
   calendar: {
     edit: string;
@@ -183,7 +187,6 @@ const zhTW: Dictionary = {
       "拍下你的課表照片，我們幫你將混亂的截圖轉為清晰的週曆 — 讓你不再花時間手動抄課表。",
     footer: "拍攝課表、確認時段、下載行事曆。",
     supportEmailLine: (email) => `客服信箱：${email}`,
-    supportPhoneLine: (phone) => `客服電話：${phone}`,
     pricingTerms:
       "收費說明：本服務提供 AI 課表辨識與行事曆匯出服務。免費版提供基礎辨識與預覽；解鎖高精度辨識及行事曆 (.ics) 匯出功能，單次購買方案為 NT$9 元（享 30 次高精度額度）。數位虛擬商品一經解鎖開通即完成交付。",
     steps: steps(
@@ -244,6 +247,11 @@ const zhTW: Dictionary = {
     payingStripe: "正在前往 Stripe…",
     keepFree: "繼續免費預覽",
     checkoutError: "無法開啟綠界付款頁面。",
+    promoLabel: "輸入優惠碼 / 兌換碼",
+    promoPlaceholder: "優惠碼",
+    promoRedeem: "兌換",
+    promoInvalid: "優惠碼無效或已過期",
+    promoSuccess: "兌換成功，已解鎖 30 次高精度解析與 .ics 下載。",
   },
   calendar: {
     edit: "編輯課程",
@@ -281,7 +289,6 @@ const zhCN: Dictionary = {
       "拍下你的课表照片，我们帮你将混乱的截图转为清晰的周历 — 让你不再花时间手动抄课表。",
     footer: "拍摄课表、确认时段、下载日历。",
     supportEmailLine: (email) => `客服邮箱：${email}`,
-    supportPhoneLine: (phone) => `客服电话：${phone}`,
     pricingTerms:
       "收费说明：本服务提供 AI 课表识别与日历导出服务。免费版提供基础识别与预览；解锁高精度识别及日历 (.ics) 导出功能，单次购买方案为 NT$9 元（享 30 次高精度额度）。数字虚拟商品一经解锁开通即完成交付。",
     steps: steps(
@@ -324,6 +331,11 @@ const zhCN: Dictionary = {
     payingStripe: "正在前往 Stripe…",
     keepFree: "继续免费预览",
     checkoutError: "无法打开绿界付款页面。",
+    promoLabel: "输入优惠码 / 兑换码",
+    promoPlaceholder: "优惠码",
+    promoRedeem: "兑换",
+    promoInvalid: "优惠码无效或已过期",
+    promoSuccess: "兑换成功，已解锁 30 次高精度解析与 .ics 下载。",
   },
   calendar: {
     edit: "编辑课程",
@@ -363,7 +375,6 @@ const en: Dictionary = {
       "Snap a photo of your course schedule. We help turn messy screenshots into a clear week view — so you spend less time copying timeslots and more time actually going to class.",
     footer: "Upload a screenshot, verify courses, download .ics.",
     supportEmailLine: (email) => `Support email: ${email}`,
-    supportPhoneLine: (phone) => `Support phone: ${phone}`,
     pricingTerms:
       "Pricing: This service provides AI schedule recognition and calendar export. The free plan includes basic recognition and preview. Unlocking high-precision recognition and calendar (.ics) export is a one-time purchase of NT$9 (30 high-precision credits). Digital goods are delivered as soon as they are unlocked.",
     steps: steps(
@@ -425,6 +436,11 @@ const en: Dictionary = {
     payingStripe: "Redirecting to Stripe…",
     keepFree: "Keep free preview",
     checkoutError: "Could not start ECPay checkout.",
+    promoLabel: "Enter Promo Code",
+    promoPlaceholder: "Promo code",
+    promoRedeem: "Redeem",
+    promoInvalid: "This promo code is invalid or expired.",
+    promoSuccess: "Redeemed. 30 high-precision parses and .ics downloads are unlocked.",
   },
   calendar: {
     edit: "Edit class",

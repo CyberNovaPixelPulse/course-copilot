@@ -99,6 +99,11 @@ export default function ScheduleUpload() {
   const signedIn = status === "authenticated";
   const [showPaywall, setShowPaywall] = useState(false);
   const [checkoutTarget, setCheckoutTarget] = useState<"ecpay" | "stripe" | null>(null);
+  const [promoOpen, setPromoOpen] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [redeemNotice, setRedeemNotice] = useState<string | null>(null);
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [currencyOverride, setCurrencyOverride] = useState<CurrencyCode | null>(null);
   const [cropQueue, setCropQueue] = useState<File[]>([]);
@@ -141,6 +146,12 @@ export default function ScheduleUpload() {
     setUsage(next);
     window.dispatchEvent(new CustomEvent(USAGE_UPDATED_EVENT));
   }, []);
+
+  useEffect(() => {
+    if (!redeemNotice) return;
+    const timer = window.setTimeout(() => setRedeemNotice(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [redeemNotice]);
 
   useEffect(() => {
     function onOpenPaywall() {
@@ -426,6 +437,50 @@ export default function ScheduleUpload() {
     }
   }
 
+  async function redeemPromo() {
+    const invalid = t.paywall.promoInvalid ?? "This promo code is invalid or expired.";
+    if (!signedIn) {
+      await signIn("google", { callbackUrl: "/#upload" });
+      return;
+    }
+    if (!promoCode.trim()) {
+      setPromoError(invalid);
+      return;
+    }
+    setPromoLoading(true);
+    setPromoError(null);
+    try {
+      const response = await fetch("/api/promo/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ code: promoCode }),
+      });
+      const data = (await response.json().catch(() => null)) as (Usage & {
+        error?: string;
+        requiresAuth?: boolean;
+      }) | null;
+      if (response.status === 401 || data?.requiresAuth) {
+        await signIn("google", { callbackUrl: "/#upload" });
+        return;
+      }
+      if (!response.ok || !data?.token || data.paid !== true) {
+        setPromoError(invalid);
+        return;
+      }
+      persistUsage(data);
+      setUsage(data);
+      window.dispatchEvent(new CustomEvent(USAGE_UPDATED_EVENT, { detail: data }));
+      setPromoCode("");
+      setPromoOpen(false);
+      setShowPaywall(false);
+      setRedeemNotice(t.paywall.promoSuccess ?? "Redeemed.");
+    } catch {
+      setPromoError(invalid);
+    } finally {
+      setPromoLoading(false);
+    }
+  }
+
   const priceLabel = formatPlanPrice(locale, rates, currencyOverride);
   const withPrice = (text: string) => text.replaceAll("NT$9", priceLabel);
 
@@ -644,6 +699,15 @@ export default function ScheduleUpload() {
         />
       ) : null}
 
+      {redeemNotice ? (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 z-[70] max-w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl bg-stone-900 px-4 py-3 text-center text-sm text-white shadow-lg"
+        >
+          {redeemNotice}
+        </div>
+      ) : null}
+
       {showPaywall ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 p-4"
@@ -690,6 +754,53 @@ export default function ScheduleUpload() {
                 </button>
               </>
             )}
+            <div className="mt-4 border-t border-stone-100 pt-3">
+              <button
+                type="button"
+                aria-expanded={promoOpen}
+                onClick={() => {
+                  setPromoOpen((open) => !open);
+                  setPromoError(null);
+                }}
+                className="text-sm font-medium text-indigo-700 hover:text-indigo-500"
+              >
+                {t.paywall.promoLabel ?? "Enter Promo Code"}
+              </button>
+              {promoOpen ? (
+                <form
+                  className="mt-3 flex gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void redeemPromo();
+                  }}
+                >
+                  <input
+                    value={promoCode}
+                    onChange={(event) => {
+                      setPromoCode(event.target.value);
+                      setPromoError(null);
+                    }}
+                    placeholder={t.paywall.promoPlaceholder ?? "Promo code"}
+                    aria-label={t.paywall.promoLabel ?? "Enter Promo Code"}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
+                  />
+                  <button
+                    type="submit"
+                    disabled={promoLoading}
+                    className="shrink-0 rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
+                  >
+                    {t.paywall.promoRedeem ?? "Redeem"}
+                  </button>
+                </form>
+              ) : null}
+              {promoError ? (
+                <p className="mt-2 text-sm text-red-600" role="alert">
+                  {promoError}
+                </p>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={() => setShowPaywall(false)}

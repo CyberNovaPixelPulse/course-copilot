@@ -2,14 +2,12 @@
 
 import ScheduleUpload from "./components/ScheduleUpload";
 import { useI18n } from "@/lib/i18n";
-import { supportEmail, supportPhone } from "@/lib/site-contact";
+import { supportEmail } from "@/lib/site-contact";
 
 export default function Home() {
   const { t } = useI18n();
   const emailLine =
     t.home.supportEmailLine?.(supportEmail) ?? `Support email: ${supportEmail}`;
-  const phoneLine =
-    t.home.supportPhoneLine?.(supportPhone) ?? `Support phone: ${supportPhone}`;
   const pricingTerms =
     t.home.pricingTerms ??
     "Pricing: This service provides AI schedule recognition and calendar export. The free plan includes basic recognition and preview. Unlocking high-precision recognition and calendar (.ics) export is a one-time purchase of NT$9 (30 high-precision credits). Digital goods are delivered as soon as they are unlocked.";
@@ -51,21 +49,13 @@ export default function Home() {
       <footer className="border-t border-stone-200 bg-stone-50 px-6 py-10 text-stone-700">
         <div className="mx-auto flex max-w-3xl flex-col items-center gap-4 text-center">
           <p className="text-sm text-stone-500">{t.home.footer}</p>
-          <address className="not-italic space-y-1 text-base leading-7 text-stone-900">
+          <address className="not-italic text-base leading-7 text-stone-900">
             <p>
               <a
                 className="underline decoration-stone-300 underline-offset-4 hover:text-indigo-700"
                 href={`mailto:${supportEmail}`}
               >
                 {emailLine}
-              </a>
-            </p>
-            <p>
-              <a
-                className="underline decoration-stone-300 underline-offset-4 hover:text-indigo-700"
-                href={`tel:${supportPhone}`}
-              >
-                {phoneLine}
               </a>
             </p>
           </address>

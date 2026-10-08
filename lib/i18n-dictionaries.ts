@@ -46,6 +46,8 @@ export type Dictionary = {
     signIn: string;
     signOut: string;
     language: string;
+    account?: string;
+    topUp?: string;
     credits?: (count: number) => string;
     freeCredits?: (count: number) => string;
   };
@@ -169,6 +171,8 @@ const zhTW: Dictionary = {
     signIn: "使用 Google 帳號登入",
     signOut: "登出",
     language: "語言",
+    account: "帳號",
+    topUp: "儲值",
     credits: (count) => `剩餘解析：${count} 次`,
     freeCredits: (count) => `剩餘免費掃描：${count} 次`,
   },
@@ -267,6 +271,8 @@ const zhCN: Dictionary = {
     signIn: "使用 Google 账号登录",
     signOut: "退出",
     language: "语言",
+    account: "账号",
+    topUp: "储值",
   },
   home: {
     badge: "专为学生打造的课表助手",
@@ -345,6 +351,8 @@ const en: Dictionary = {
     signIn: "Sign in with Google",
     signOut: "Sign Out",
     language: "Language",
+    account: "Account",
+    topUp: "Top up",
     credits: (count) => `Credits: ${count}`,
     freeCredits: (count) => `Free scans: ${count}`,
   },

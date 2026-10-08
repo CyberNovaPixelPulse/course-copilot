@@ -129,6 +129,7 @@ export async function POST(request: NextRequest) {
     metadata?: Record<string, unknown>;
   }) {
     try {
+      console.log("[Turso Log] 開始寫入記錄至 Turso...");
       await logAiUsage({
         siteId: "course-copilot",
         model: params.model || "gpt-4o",
@@ -146,9 +147,9 @@ export async function POST(request: NextRequest) {
           events_count: eventsCount,
         },
       });
-      console.log("[Turso Log Success]");
+      console.log("[Turso Log] 成功寫入 Turso！");
     } catch (err) {
-      console.error("[Turso Log Error]", err);
+      console.error("[Turso Log Error] 寫入失敗原因：", err);
     }
   }
 

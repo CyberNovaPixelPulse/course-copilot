@@ -19,6 +19,16 @@ import { WEEKDAYS, type Course, type CourseSlot } from "@/lib/types";
 
 export const maxDuration = 120;
 
+const TURSO_LOG_FAILURE = "後台數據記錄失敗，系統已中斷此操作以防資料遺漏";
+
+function tursoLoggingFailed(error: unknown) {
+  return error instanceof Error && error.message.startsWith("[Turso Logging Failed]");
+}
+
+function tursoLoggingFailureResponse() {
+  return NextResponse.json({ error: TURSO_LOG_FAILURE }, { status: 500 });
+}
+
 const ACCEPTED_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const MAX_BYTES = 15 * 1024 * 1024;
 /** Same course, same day: merge consecutive periods. Keep the first start and the last end. */
@@ -150,6 +160,8 @@ export async function POST(request: NextRequest) {
       console.log("[Turso Log] 成功寫入 Turso！");
     } catch (err) {
       console.error("[Turso Log Error] 寫入失敗原因：", err);
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`[Turso Logging Failed] ${message}`);
     }
   }
 
@@ -257,6 +269,8 @@ export async function POST(request: NextRequest) {
     attachEntitlement(response, next);
     return response;
   } catch (error) {
+    if (tursoLoggingFailed(error)) return tursoLoggingFailureResponse();
+
     const message =
       error instanceof Error ? error.message : "Failed to parse the schedule image.";
     const calls =
@@ -264,40 +278,45 @@ export async function POST(request: NextRequest) {
         ? (error as { aiCalls: AiCallMetric[] }).aiCalls
         : [];
     const failureMeta = { message, mimeType: mimeType || undefined };
-    if (calls.length === 0) {
-      await logParseCall({
-        model: "gpt-4o",
-        inputTokens: 0,
-        outputTokens: 0,
-        latencyMs: 0,
-        status: "error",
-        step: 1,
-        metadata: failureMeta,
-      });
-    } else {
-      for (const [index, call] of calls.entries()) {
+    try {
+      if (calls.length === 0) {
         await logParseCall({
-          model: call.model,
-          inputTokens: call.inputTokens,
-          outputTokens: call.outputTokens,
-          latencyMs: call.latencyMs,
-          status: "success",
-          step: index + 1,
-          metadata: { stage: call.stage, mimeType: mimeType || undefined },
+          model: "gpt-4o",
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs: 0,
+          status: "error",
+          step: 1,
+          metadata: failureMeta,
+        });
+      } else {
+        for (const [index, call] of calls.entries()) {
+          await logParseCall({
+            model: call.model,
+            inputTokens: call.inputTokens,
+            outputTokens: call.outputTokens,
+            latencyMs: call.latencyMs,
+            status: "success",
+            step: index + 1,
+            metadata: { stage: call.stage, mimeType: mimeType || undefined },
+          });
+        }
+        await logParseCall({
+          model: "gpt-4o",
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs: 0,
+          status: "error",
+          step: calls.length + 1,
+          metadata: {
+            ...failureMeta,
+            completedStages: calls.map((call) => call.stage),
+          },
         });
       }
-      await logParseCall({
-        model: "gpt-4o",
-        inputTokens: 0,
-        outputTokens: 0,
-        latencyMs: 0,
-        status: "error",
-        step: calls.length + 1,
-        metadata: {
-          ...failureMeta,
-          completedStages: calls.map((call) => call.stage),
-        },
-      });
+    } catch (logError) {
+      if (tursoLoggingFailed(logError)) return tursoLoggingFailureResponse();
+      throw logError;
     }
     const status = message.includes("OPENAI_API_KEY") ? 500 : 502;
     return NextResponse.json({ error: message }, { status });

@@ -98,7 +98,7 @@ export default function ScheduleUpload() {
   const { status } = useSession();
   const signedIn = status === "authenticated";
   const [showPaywall, setShowPaywall] = useState(false);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutTarget, setCheckoutTarget] = useState<"ecpay" | "stripe" | null>(null);
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [currencyOverride, setCurrencyOverride] = useState<CurrencyCode | null>(null);
   const [cropQueue, setCropQueue] = useState<File[]>([]);
@@ -363,12 +363,44 @@ export default function ScheduleUpload() {
     }
   }
 
-  async function startCheckout() {
+  async function startEcpayCheckout() {
     if (!signedIn) {
       await signIn("google", { callbackUrl: "/#upload" });
       return;
     }
-    setCheckoutLoading(true);
+    setCheckoutTarget("ecpay");
+    setError(null);
+    try {
+      const response = await fetch("/api/checkout/ecpay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ locale }),
+      });
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!response.ok || !contentType.includes("text/html")) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || t.paywall.checkoutError);
+      }
+      const html = await response.text();
+      document.open();
+      document.write(html);
+      document.close();
+    } catch (checkoutError) {
+      setError(
+        checkoutError instanceof Error
+          ? checkoutError.message
+          : t.paywall.checkoutError,
+      );
+      setCheckoutTarget(null);
+    }
+  }
+
+  async function startStripeCheckout() {
+    if (!signedIn) {
+      await signIn("google", { callbackUrl: "/#upload" });
+      return;
+    }
+    setCheckoutTarget("stripe");
     setError(null);
     try {
       const response = await fetch("/api/checkout", {
@@ -376,9 +408,12 @@ export default function ScheduleUpload() {
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ locale }),
       });
-      const data = (await response.json()) as { url?: string; error?: string };
-      if (!response.ok || !data.url) {
-        throw new Error(data.error || t.paywall.checkoutError);
+      const data = (await response.json().catch(() => null)) as {
+        url?: string;
+        error?: string;
+      } | null;
+      if (!response.ok || !data?.url) {
+        throw new Error(data?.error || t.paywall.checkoutError);
       }
       window.location.href = data.url;
     } catch (checkoutError) {
@@ -387,12 +422,12 @@ export default function ScheduleUpload() {
           ? checkoutError.message
           : t.paywall.checkoutError,
       );
-      setCheckoutLoading(false);
+      setCheckoutTarget(null);
     }
   }
 
   const priceLabel = formatPlanPrice(locale, rates, currencyOverride);
-  const withPrice = (text: string) => text.replaceAll("NT$33", priceLabel);
+  const withPrice = (text: string) => text.replaceAll("NT$9", priceLabel);
 
   return (
     <section
@@ -634,14 +669,26 @@ export default function ScheduleUpload() {
                 {t.nav.signIn}
               </button>
             ) : (
-              <button
-                type="button"
-                disabled={checkoutLoading}
-                onClick={() => void startCheckout()}
-                className="mt-5 w-full rounded-full bg-indigo-600 px-4 py-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
-              >
-                {checkoutLoading ? t.paywall.paying : withPrice(t.paywall.pay)}
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={checkoutTarget !== null}
+                  onClick={() => void startEcpayCheckout()}
+                  className="mt-5 w-full rounded-full bg-indigo-600 px-4 py-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+                >
+                  {checkoutTarget === "ecpay" ? t.paywall.paying : t.paywall.pay}
+                </button>
+                <button
+                  type="button"
+                  disabled={checkoutTarget !== null}
+                  onClick={() => void startStripeCheckout()}
+                  className="mt-2 w-full rounded-full border border-stone-300 bg-white px-4 py-3 text-sm font-medium text-stone-900 hover:bg-stone-50 disabled:opacity-60"
+                >
+                  {checkoutTarget === "stripe"
+                    ? (t.paywall.payingStripe ?? "Redirecting to Stripe…")
+                    : (t.paywall.payStripe ?? "Pay NT$9 with Stripe")}
+                </button>
+              </>
             )}
             <button
               type="button"

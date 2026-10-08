@@ -25,16 +25,33 @@ const notoSansTc = Noto_Sans_TC({
 });
 
 export const metadata: Metadata = {
-  title: "AI 課表助手 - 截圖一鍵匯入行事曆",
+  metadataBase: new URL("https://ics.necterelux.com"),
+  title: "AI 課表助手 - 截圖 1 秒匯入 iPhone/Google 日曆 | Course Copilot",
   description:
-    "專為學生打造的 AI 課表助手，上傳課表截圖即可自動轉換並匯入 Apple / Google 日曆。",
-  keywords: [
-    "AI 課表助手",
-    "課表轉行事曆",
-    "AI 課表",
-    "課表 ics",
-    "necterelux",
-  ],
+    "專為大學生設計的課表轉日曆工具！上傳課表截圖，AI 自動精準辨識並一鍵生成 .ics 檔案，輕鬆匯入 Apple 行事曆與 Google 日曆。",
+  keywords: ["AI課表", "課表轉行事曆", "課表ics", "大學課表", "Apple行事曆課表", "Course Copilot"],
+  openGraph: {
+    title: "AI 課表助手 - 截圖 1 秒匯入 iPhone/Google 日曆",
+    description: "別再手動手抄課表！截圖自動轉成 .ics 檔案，秒速同步你的手機行事曆。",
+    url: "https://ics.necterelux.com",
+    siteName: "AI 課表助手",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "AI 課表助手預覽圖",
+      },
+    ],
+    locale: "zh_TW",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AI 課表助手 - 截圖 1 秒匯入日曆",
+    description: "專為學生打造，上傳課表截圖一秒自動產出 .ics 檔案。",
+    images: ["/og-image.png"],
+  },
   verification: {
     google: "11dA7xDPvOjAqIt9fiVCW5Fg6ikuqB5Dc5U4uc9eNuw",
   },

@@ -1,7 +1,7 @@
 import { PLAN_PRICE_TWD } from "@/lib/entitlement";
 
-export const BASE_PRICE_LABEL = "NT$33";
-export const ECPAY_TWD_NOTE = "以新台幣 NT$33 結帳";
+export const BASE_PRICE_LABEL = "NT$9";
+export const ECPAY_TWD_NOTE = "以新台幣 NT$9 結帳";
 
 export type CurrencyCode = "TWD" | "USD" | "JPY" | "KRW" | "EUR";
 
@@ -84,6 +84,7 @@ export function formatPlanPrice(
   const rate = rates?.[currency];
   if (!rate || !Number.isFinite(rate) || rate <= 0) return BASE_PRICE_LABEL;
   const amount = convertFromTwd(PLAN_PRICE_TWD, currency, rate);
+  if (amount < STRIPE_MINIMUM[currency]) return BASE_PRICE_LABEL;
   const digits = ZERO_DECIMAL.has(currency) ? 0 : 2;
   const local = new Intl.NumberFormat("en-US", {
     style: "currency",

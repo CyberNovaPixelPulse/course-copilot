@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const GPT4O_CAP = 30;
 export const FREE_SCAN_CAP = 3;
-export const PLAN_PRICE_TWD = 33;
+export const PLAN_PRICE_TWD = 9;
 export const COOKIE_NAME = "cc_entitlement";
 export const TOKEN_HEADER = "x-cc-token";
 export const STORAGE_KEY = "cc_entitlement_token";

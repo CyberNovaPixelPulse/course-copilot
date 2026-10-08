@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   const googleSession = await getGoogleSession();
   if (!googleSession?.user) {
     return NextResponse.json(
-      { error: "Sign in with Google to unlock the NT$33 plan.", requiresAuth: true },
+      { error: "Sign in with Google to unlock the NT$9 plan.", requiresAuth: true },
       { status: 401 },
     );
   }
@@ -52,7 +52,6 @@ export async function POST(request: NextRequest) {
   let entitlement = readEntitlement(request);
   if (googleId) entitlement = withAccountId(entitlement, googleId);
   const origin = request.nextUrl.origin;
-  const priceId = process.env.STRIPE_PRICE_ID;
 
   let locale = "zh-TW";
   try {
@@ -62,7 +61,6 @@ export async function POST(request: NextRequest) {
     locale = "zh-TW";
   }
   const quote = await quoteForRequest(locale);
-  const fixedTwdPriceId = priceId && quote.currency === "TWD" ? priceId : "";
   const description = quote.note
     ? `${quote.note}. 30 high-precision gpt-4o extractions + unlimited .ics downloads`
     : "30 high-precision gpt-4o extractions + unlimited .ics downloads";
@@ -77,21 +75,19 @@ export async function POST(request: NextRequest) {
       currency: quote.currency,
       amount: String(quote.amount),
     },
-    line_items: fixedTwdPriceId
-      ? [{ price: fixedTwdPriceId, quantity: 1 }]
-      : [
-          {
-            quantity: 1,
-            price_data: {
-              currency: quote.currency.toLowerCase(),
-              unit_amount: quote.unitAmount,
-              product_data: {
-                name: `Course Copilot ${quote.label}`,
-                description,
-              },
-            },
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: quote.currency.toLowerCase(),
+          unit_amount: quote.unitAmount,
+          product_data: {
+            name: `Course Copilot ${quote.label}`,
+            description,
           },
-        ],
+        },
+      },
+    ],
   });
 
   if (!checkoutSession.url) {

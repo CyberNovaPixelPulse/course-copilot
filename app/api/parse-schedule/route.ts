@@ -408,16 +408,6 @@ export function coursesFromMeetings(meetings: ScheduleMeeting[]): Course[] {
     ];
     day.codes.push(...codes);
     if (!day.room && meeting.room) day.room = meeting.room;
-    if (codes.length === 0) {
-      const start = exactClock(meeting.start);
-      const end = exactClock(meeting.end);
-      const printed = clocksIn(meeting.name);
-      if (start && end && (timeToMinutes(start) ?? 0) < (timeToMinutes(end) ?? 0)) {
-        day.ranges.push({ weekday, startTime: start, endTime: end, location: meeting.room });
-      } else if (printed) {
-        day.ranges.push({ weekday, startTime: printed.start, endTime: printed.end, location: meeting.room });
-      }
-    }
     course.days.set(weekday, day);
     grouped.set(key, course);
   }
@@ -436,7 +426,15 @@ export function coursesFromMeetings(meetings: ScheduleMeeting[]): Course[] {
         ),
       };
     })
-    .filter((course) => course.slots.length > 0);
+    .filter((course) => course.slots.length > 0)
+    .sort((left, right) => {
+      const leftDay = WEEKDAYS.indexOf(left.slots[0]?.weekday ?? "Monday");
+      const rightDay = WEEKDAYS.indexOf(right.slots[0]?.weekday ?? "Monday");
+      if (leftDay !== rightDay) return leftDay - rightDay;
+      if (left.name < right.name) return -1;
+      if (left.name > right.name) return 1;
+      return 0;
+    });
 }
 
 function countEvents(courses: Course[]) {

@@ -10,6 +10,7 @@ import {
 import { getSampleCourses, localizeSampleCourses } from "@/lib/sampleSchedule";
 import ExportSuccessModal from "./ExportSuccessModal";
 import ScheduleCropModal from "./ScheduleCropModal";
+import AddCourseModal from "./AddCourseModal";
 import type { Course } from "@/lib/types";
 import { useSession, signIn } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
@@ -109,6 +110,7 @@ export default function ScheduleUpload() {
   const [currencyOverride, setCurrencyOverride] = useState<CurrencyCode | null>(null);
   const [cropQueue, setCropQueue] = useState<File[]>([]);
   const [exportSuccessOpen, setExportSuccessOpen] = useState(false);
+  const [addCourseOpen, setAddCourseOpen] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const preparedBatch = useRef<File[]>([]);
 
@@ -640,7 +642,7 @@ export default function ScheduleUpload() {
           onClick={loadSampleSchedule}
           className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
         >
-          {t.upload.trySample ?? "No schedule? Click here to try with sample data"}
+          {t.upload.sampleDataPrompt ?? "No schedule? Click here to try with sample data"}
         </button>
       </div>
 
@@ -652,24 +654,33 @@ export default function ScheduleUpload() {
           <div className="flex flex-col gap-3 border-b border-stone-200 px-5 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-semibold text-stone-900">{t.upload.weeklyTitle}</h2>
-              <button
-                type="button"
-                onClick={() => void handleDownload()}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium ${
-                  usage?.paid === true
-                    ? "bg-indigo-600 text-white hover:bg-indigo-500"
-                    : "bg-stone-200 text-stone-500"
-                }`}
-              >
-                {usage?.paid === true ? (
-                  t.upload.download
-                ) : (
-                  <>
-                    <span aria-hidden>🔒</span>
-                    {t.upload.downloadLocked}
-                  </>
-                )}
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAddCourseOpen(true)}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-white dark:text-slate-700 dark:hover:bg-slate-50"
+                >
+                  {t.upload.addCourse ?? "+ Add course"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDownload()}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium ${
+                    usage?.paid === true
+                      ? "bg-indigo-600 text-white hover:bg-indigo-500"
+                      : "bg-stone-200 text-stone-500"
+                  }`}
+                >
+                  {usage?.paid === true ? (
+                    t.upload.download
+                  ) : (
+                    <>
+                      <span aria-hidden>🔒</span>
+                      {t.upload.downloadLocked}
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
             <div role="note">
               <p className="text-sm text-amber-500">
@@ -684,6 +695,16 @@ export default function ScheduleUpload() {
           </div>
           <WeeklyCalendar key={calendarKey} courses={courses} onChange={setCourses} />
         </div>
+      ) : null}
+
+      {addCourseOpen ? (
+        <AddCourseModal
+          onClose={() => setAddCourseOpen(false)}
+          onAdd={(course) => {
+            setCourses((current) => [...current, course]);
+            setAddCourseOpen(false);
+          }}
+        />
       ) : null}
 
       {exportSuccessOpen ? (

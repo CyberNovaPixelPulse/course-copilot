@@ -18,40 +18,84 @@ export type ScheduleMeeting = {
 };
 
 const OPENAI_TIMEOUT_MS = 45_000;
+const IMAGE_DETAIL = "high" as const;
+
+const COLUMN_NOTE = {
+  type: "object",
+  additionalProperties: false,
+  required: ["column", "occupancy"],
+  properties: {
+    column: { type: "integer" },
+    occupancy: { type: "string", enum: ["Has Courses", "Empty Column"] },
+  },
+} as const;
+
+const CELL_NOTE = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name", "column", "codes"],
+  properties: {
+    name: { type: "string" },
+    column: { type: "integer" },
+    codes: { type: "array", items: { type: "string" } },
+  },
+} as const;
 
 const COURSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["courses"],
+  required: ["scratchpad", "courses"],
   properties: {
+    scratchpad: {
+      type: "object",
+      additionalProperties: false,
+      required: ["columns", "cells"],
+      properties: {
+        columns: {
+          type: "array",
+          minItems: 5,
+          maxItems: 5,
+          items: COLUMN_NOTE,
+        },
+        cells: {
+          type: "array",
+          items: CELL_NOTE,
+        },
+      },
+    },
     courses: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["name", "day", "periods", "room", "start", "end"],
+        required: ["name", "day", "periods", "room"],
         properties: {
           name: { type: "string" },
           day: { type: "integer" },
           periods: { type: "array", items: { type: "string" } },
           room: { type: "string" },
-          start: { type: "string" },
-          end: { type: "string" },
         },
       },
     },
   },
 } as const;
 
-const COURSE_PROMPT = `Return only the JSON object.
-Read five equal columns to the right of the left time margin.
-day 1 is Monday, day 2 Tuesday, day 3 Wednesday, day 4 Thursday, day 5 Friday.
-An empty column stays empty. Do not move a course into another day.
-For each course return the printed period codes in periods, such as ["B"] or ["8","9"] or ["C","D"].
-Leave start and end as "" when a code from 1-15 or A-J is present.
-Only when the sheet has none of those codes, copy the printed start and end exactly. 08:10 stays "08:10" and 07:10 stays "07:10".
+const COURSE_PROMPT = `Return one JSON object. Fill scratchpad completely, then fill courses from that scratchpad. Do not invent clock times.
+
+After the left time column, split the remaining width into five equal strips:
+0% to 20% is column 1 週一, 20% to 40% is column 2 週二, 40% to 60% is column 3 週三, 60% to 80% is column 4 週四, 80% to 100% is column 5 週五.
+A blank strip is an empty column. Do not slide the strip on its right into a blank strip.
+
+Step 1, scratchpad.columns. Five entries, column 1 through 5, in that order.
+occupancy is "Has Courses" or "Empty Column".
+
+Step 2, scratchpad.cells. For each occupied cell, record the course name, its column number, and the codes printed in that cell, such as "B", "C", "D", "8", or "9".
+Do not write HH:mm here.
+
+Then courses. day is that column number, from 1 to 5. periods is those codes.
+Put consecutive codes of the same course in one periods array, such as ["C","D"] or ["8","9"].
 name omits markers such as (B) or (8). room is the classroom, or "".
-One object per course per day.`;
+The server looks up every code. Do not calculate start or end.`;
 
 function openaiClient() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -66,7 +110,7 @@ function imagePart(mimeType: string, base64: string) {
     type: "image_url" as const,
     image_url: {
       url: `data:${mimeType};base64,${base64}`,
-      detail: "high" as const,
+      detail: IMAGE_DETAIL,
     },
   };
 }
@@ -96,8 +140,8 @@ export function meetingsFromPayload(payload: unknown): ScheduleMeeting[] {
       day,
       periods,
       room: textOf(row.room),
-      start: textOf(row.start),
-      end: textOf(row.end),
+      start: "",
+      end: "",
     });
   }
   return meetings;
@@ -137,6 +181,7 @@ export async function extractScheduleCourses(params: {
     throw new Error("The uploaded image was empty.");
   }
   console.log("Currently using model:", "gpt-4o");
+  console.log("OpenAI image detail:", IMAGE_DETAIL);
   console.log("OpenAI image payload bytes:", params.base64.length);
   const openai = openaiClient();
   const started = Date.now();
@@ -144,6 +189,8 @@ export async function extractScheduleCourses(params: {
     {
       model: "gpt-4o",
       temperature: 0,
+      top_p: 1e-6,
+      seed: 42,
       response_format: {
         type: "json_schema",
         json_schema: {
@@ -159,7 +206,7 @@ export async function extractScheduleCourses(params: {
           content: [
             {
               type: "text",
-              text: "Return day 1-5 and period codes. Put consecutive periods of the same course in one periods array. Copy a printed 08:10 as 08:10.",
+              text: "Fill scratchpad.columns 1 through 5 first. A blank strip is Empty Column. Do not slide a later strip left. Then list each course with its column and printed codes only. Do not estimate HH:mm.",
             },
             imagePart(params.mimeType || "image/jpeg", params.base64),
           ],

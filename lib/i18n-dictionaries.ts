@@ -79,6 +79,22 @@ export type Dictionary = {
     download: string;
     downloadLocked: string;
     icsError: string;
+    addCourse?: string;
+    addCourseTitle?: string;
+    addCourseName?: string;
+    addCourseNamePlaceholder?: string;
+    addCourseDay?: string;
+    addCourseStart?: string;
+    addCourseEnd?: string;
+    addCourseLocation?: string;
+    addCourseLocationPlaceholder?: string;
+    addCourseProfessor?: string;
+    addCourseProfessorPlaceholder?: string;
+    addCourseConfirm?: string;
+    addCourseCancel?: string;
+    addCourseNameRequired?: string;
+    addCourseTimeInvalid?: string;
+    sampleDataPrompt?: string;
     trySample?: string;
     freeScanCta?: string;
     cropTitle?: string;
@@ -220,7 +236,23 @@ const zhTW: Dictionary = {
     download: "下載 .ics 行事曆",
     downloadLocked: "鎖定 · 下載 .ics 行事曆",
     icsError: "無法產生行事曆檔，請檢查時間後再試。",
-    trySample: "沒有課表？點此載入範例課表試用",
+    addCourse: "＋ 新增課程",
+    addCourseTitle: "新增課程",
+    addCourseName: "課程名稱",
+    addCourseNamePlaceholder: "微積分",
+    addCourseDay: "星期幾",
+    addCourseStart: "開始時間",
+    addCourseEnd: "結束時間",
+    addCourseLocation: "地點/教室",
+    addCourseLocationPlaceholder: "綜二 302",
+    addCourseProfessor: "教授/備註",
+    addCourseProfessorPlaceholder: "選填",
+    addCourseConfirm: "確認新增",
+    addCourseCancel: "取消",
+    addCourseNameRequired: "請輸入課程名稱",
+    addCourseTimeInvalid: "結束時間須晚於開始時間",
+    sampleDataPrompt: "沒有課表？點此載入範例課表體驗",
+    trySample: "沒有課表？點此載入範例課表體驗",
     freeScanCta: "登入 Google 帳號，免費體驗 3 次 AI 課表掃描",
     cropTitle: "裁切課表",
     cropHint: "請框選「課表表格主體」，排除上方分頁與下方工作列以取得最高精準度",
@@ -325,7 +357,9 @@ const zhCN: Dictionary = {
     download: "下载 .ics 日历",
     downloadLocked: "锁定 · 下载 .ics 日历",
     icsError: "无法生成日历文件，请检查时间后再试。",
-    trySample: "没有课表？点此载入范例课表试用",
+    addCourse: "＋ 添加课程",
+    sampleDataPrompt: "没有课程表？点击加载示例课程表体验",
+    trySample: "没有课程表？点击加载示例课程表体验",
   },
   paywall: {
     title: "解锁日历导出",
@@ -414,6 +448,22 @@ const en: Dictionary = {
     download: "Download .ics Calendar",
     downloadLocked: "Locked · Download .ics Calendar",
     icsError: "Could not build the calendar file. Check the times and try again.",
+    addCourse: "+ Add course",
+    addCourseTitle: "Add course",
+    addCourseName: "Course name",
+    addCourseNamePlaceholder: "Calculus",
+    addCourseDay: "Weekday",
+    addCourseStart: "Start",
+    addCourseEnd: "End",
+    addCourseLocation: "Location",
+    addCourseLocationPlaceholder: "Room 302",
+    addCourseProfessor: "Professor / note",
+    addCourseProfessorPlaceholder: "Optional",
+    addCourseConfirm: "Add course",
+    addCourseCancel: "Cancel",
+    addCourseNameRequired: "Enter a course name",
+    addCourseTimeInvalid: "End time must be after the start time",
+    sampleDataPrompt: "No schedule? Click here to try with sample data",
     trySample: "No schedule? Click here to try with sample data",
     freeScanCta: "Sign in with Google to get 3 free AI schedule scans",
     cropTitle: "Crop the schedule",
@@ -517,6 +567,8 @@ const ja: Dictionary = {
     download: ".ics カレンダーをダウンロード",
     downloadLocked: "ロック中 · .ics カレンダーをダウンロード",
     icsError: "カレンダーファイルを作成できませんでした。時間を確認してもう一度お試しください。",
+    addCourse: "+ 授業を追加",
+    sampleDataPrompt: "時間割がありませんか？サンプルデータでお試し",
     freeScanCta: "Google アカウントでログインして、AI スキャンを3回無料体験",
     cropTitle: "時間割を切り抜く",
     cropHint:
@@ -608,6 +660,8 @@ const ko: Dictionary = {
     download: ".ics 캘린더 다운로드",
     downloadLocked: "잠김 · .ics 캘린더 다운로드",
     icsError: "캘린더 파일을 만들지 못했습니다. 시간을 확인한 뒤 다시 시도하세요.",
+    addCourse: "+ 수업 추가",
+    sampleDataPrompt: "시간표가 없으신가요? 샘플 데이터로 체험하기",
   },
   paywall: {
     title: "캘린더 내보내기 잠금 해제",

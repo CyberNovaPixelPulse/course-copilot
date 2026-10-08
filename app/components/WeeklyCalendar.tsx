@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { WEEKDAYS, type Course, type CourseSlot, type Weekday } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
 
@@ -149,6 +150,15 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
     courseIndex: number;
     slotIndex: number;
   } | null>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [editing]);
 
   const days = useMemo(() => visibleDays(courses), [courses]);
   const hours = useMemo(
@@ -410,18 +420,19 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
         </div>
       </div>
 
-      {editing && editingEvent ? (
+      {editing && editingEvent
+        ? createPortal(
         <div
-          className="absolute inset-0 z-30 flex items-start justify-center bg-stone-900/20 p-4 pt-16"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
           onClick={() => setEditing(null)}
         >
           <div
-            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-4 shadow-xl"
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl dark:bg-neutral-900"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-label={t.calendar.edit}
           >
-            <p className="text-sm font-semibold text-stone-900">{t.calendar.edit}</p>
+            <p className="text-sm font-semibold text-stone-900 dark:text-neutral-100">{t.calendar.edit}</p>
             <label className="mt-3 block text-xs font-medium text-stone-500">
               {t.calendar.course}
               <input
@@ -481,7 +492,7 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
                 ))}
               </select>
             </label>
-            <p className="mt-3 text-xs text-stone-500">
+            <p className="mt-3 text-xs text-stone-500 dark:text-neutral-400">
               {editingEvent.slot.startTime} – {editingEvent.slot.endTime} · {t.calendar.resizeHint}
             </p>
             <div className="mt-4 flex justify-between">
@@ -501,8 +512,10 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+        document.body,
+      )
+        : null}
     </div>
   );
 }

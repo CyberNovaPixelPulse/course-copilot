@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readEntitlement, withAccountId } from "@/lib/entitlement";
+import {
+  COOKIE_NAME,
+  TOKEN_HEADER,
+  decodeEntitlement,
+  emptyEntitlement,
+  readEntitlement,
+  withAccountId,
+} from "@/lib/entitlement";
 import { coursesToIcs } from "@/lib/ics";
 import { getGoogleSession } from "@/lib/session";
 import { WEEKDAYS, type Course, type CourseSlot, type Weekday } from "@/lib/types";
@@ -40,7 +47,57 @@ function isCourseList(value: unknown): value is Course[] {
   });
 }
 
-export async function POST(request: NextRequest) {
+const ICS_HEADERS = {
+  "Content-Type": "text/calendar; charset=utf-8",
+  "Content-Disposition": 'attachment; filename="course-schedule.ics"',
+  "Cache-Control": "no-store",
+};
+
+function resolveEntitlement(request: NextRequest, token: string | null) {
+  if (request.cookies.get(COOKIE_NAME)?.value) return readEntitlement(request);
+  const fromHeader = decodeEntitlement(request.headers.get(TOKEN_HEADER));
+  if (fromHeader) return fromHeader;
+  return decodeEntitlement(token) ?? emptyEntitlement();
+}
+
+async function readExportPayload(request: NextRequest): Promise<{ courses: unknown; token: string | null }> {
+  const packed = new URL(request.url).searchParams.get("d");
+  if (packed) {
+    const parsed = JSON.parse(packed) as { courses?: unknown; token?: unknown };
+    return {
+      courses: parsed.courses,
+      token: typeof parsed.token === "string" ? parsed.token : null,
+    };
+  }
+
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const body = (await request.json()) as { courses?: unknown; token?: unknown };
+    return {
+      courses: body.courses,
+      token: typeof body.token === "string" ? body.token : null,
+    };
+  }
+
+  if (
+    contentType.includes("application/x-www-form-urlencoded") ||
+    contentType.includes("multipart/form-data")
+  ) {
+    const form = await request.formData();
+    const raw = form.get("payload");
+    if (typeof raw === "string" && raw) {
+      const parsed = JSON.parse(raw) as { courses?: unknown; token?: unknown };
+      return {
+        courses: parsed.courses,
+        token: typeof parsed.token === "string" ? parsed.token : null,
+      };
+    }
+  }
+
+  return { courses: undefined, token: null };
+}
+
+async function exportIcs(request: NextRequest) {
   const session = await getGoogleSession();
   if (!session?.user) {
     return NextResponse.json(
@@ -50,7 +107,14 @@ export async function POST(request: NextRequest) {
   }
 
   const googleId = session.user.id || session.user.email || "";
-  let entitlement = readEntitlement(request);
+  let payload: { courses: unknown; token: string | null };
+  try {
+    payload = await readExportPayload(request);
+  } catch {
+    return NextResponse.json({ error: "Missing course list." }, { status: 400 });
+  }
+
+  let entitlement = resolveEntitlement(request, payload.token);
   if (googleId) entitlement = withAccountId(entitlement, googleId);
   if (!entitlement.paid) {
     return NextResponse.json(
@@ -59,27 +123,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { courses?: unknown };
-  try {
-    body = (await request.json()) as { courses?: unknown };
-  } catch {
-    return NextResponse.json({ error: "Missing course list." }, { status: 400 });
-  }
-  if (!isCourseList(body.courses)) {
+  if (!isCourseList(payload.courses)) {
     return NextResponse.json({ error: "Course list is invalid." }, { status: 400 });
   }
 
   try {
-    const ics = coursesToIcs(body.courses);
-    return new NextResponse(ics, {
+    return new NextResponse(coursesToIcs(payload.courses), {
       status: 200,
-      headers: {
-        "Content-Type": "text/calendar; charset=utf-8",
-        "Content-Disposition": 'attachment; filename="course-schedule.ics"',
-        "Cache-Control": "no-store",
-      },
+      headers: ICS_HEADERS,
     });
   } catch {
     return NextResponse.json({ error: "Could not build the calendar file." }, { status: 400 });
   }
+}
+
+export async function GET(request: NextRequest) {
+  return exportIcs(request);
+}
+
+export async function POST(request: NextRequest) {
+  return exportIcs(request);
 }

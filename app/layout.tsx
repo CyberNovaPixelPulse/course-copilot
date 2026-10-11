@@ -26,13 +26,14 @@ const notoSansTc = Noto_Sans_TC({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ics.necterelux.com"),
-  title: "AI 課表助手 - 截圖 1 秒匯入 iPhone/Google 日曆 | Course Copilot",
+  title: "課表轉行事曆｜AI 截圖辨識、匯入 iPhone 與 Google 日曆 | Course Copilot",
+  alternates: { canonical: "/" },
   description:
-    "專為大學生設計的課表轉日曆工具！上傳課表截圖，AI 自動精準辨識並一鍵生成 .ics 檔案，輕鬆匯入 Apple 行事曆與 Google 日曆。",
+    "Course Copilot AI 課表助手：上傳大學課表截圖，辨識課程、時間與教室，確認每週課表後匯出 ICS 檔，匯入 iPhone／Apple 行事曆與 Google 日曆。提供免費辨識預覽，行事曆匯出需解鎖。",
   keywords: ["AI課表", "課表轉行事曆", "課表ics", "大學課表", "Apple行事曆課表", "Course Copilot"],
   openGraph: {
-    title: "AI 課表助手 - 截圖 1 秒匯入 iPhone/Google 日曆",
-    description: "別再手動手抄課表！截圖自動轉成 .ics 檔案，秒速同步你的手機行事曆。",
+    title: "課表轉行事曆｜AI 課表助手 Course Copilot",
+    description: "上傳課表截圖，確認課程與時段後匯出 ICS，匯入 iPhone 與 Google 日曆。",
     url: "https://ics.necterelux.com",
     siteName: "AI 課表助手",
     images: [
@@ -48,8 +49,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "AI 課表助手 - 截圖 1 秒匯入日曆",
-    description: "專為學生打造，上傳課表截圖一秒自動產出 .ics 檔案。",
+    title: "課表轉行事曆｜AI 課表助手 Course Copilot",
+    description: "上傳課表截圖，確認課程與時段後匯出 ICS，匯入 iPhone 與 Google 日曆。",
     images: ["/og-image.png"],
   },
   verification: {

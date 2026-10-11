@@ -210,9 +210,9 @@ const zhTW: Dictionary = {
   },
   home: {
     badge: "專為學生打造的課表助手",
-    title: "AI 課表助手",
+    title: "AI 課表助手：課表截圖轉行事曆",
     description:
-      "拍下你的課表照片，我們幫你將混亂的截圖轉為清晰的週曆 — 讓你不再花時間手動抄課表。",
+      "上傳大學課表截圖，AI 幫你辨識課程名稱、上課時間與教室，整理成每週課表。確認後可解鎖下載 ICS 檔，將課表匯入 iPhone 的 Apple 行事曆或 Google 日曆，省下手動輸入每堂課的時間。",
     footer: "拍攝課表、確認時段、下載行事曆。",
     supportEmailLine: (email) => `客服信箱：${email}`,
     pricingTerms:

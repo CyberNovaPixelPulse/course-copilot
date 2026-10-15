@@ -96,3 +96,88 @@ test('webhook returns exact acknowledgement and browser redirect grants nothing'
   assert.equal(redirect.status,303);
   assert.equal(new URL(redirect.headers.get('location')).searchParams.get('ecpay_order'),'unpaid');
 });
+
+const { NextRequest } = require('next/server');
+const sessionModule = require('../lib/session.ts');
+let googleSession = null;
+sessionModule.getGoogleSession = async () => googleSession;
+const checkout = require('../app/api/checkout/ecpay/route.ts');
+const paymentStatus = require('../app/api/checkout/ecpay/status/route.ts');
+let stripeSession = {};
+const originalLoad = Module._load;
+Module._load = function(id, ...args) {
+  if (id === 'stripe') return class Stripe { checkout = { sessions: { retrieve: async () => stripeSession } }; };
+  return originalLoad.call(this,id,...args);
+};
+const stripeConfirm = require('../app/api/checkout/confirm/route.ts');
+Module._load = originalLoad;
+
+test('checkout and status enforce sign-in and order ownership; payment unlocks via status', async () => {
+  process.env.ECPAY_ENV = 'production';
+  googleSession = null;
+  assert.equal((await checkout.POST(new NextRequest('https://shop.example/api/checkout/ecpay',{method:'POST'}))).status,401);
+  assert.equal((await paymentStatus.GET(new NextRequest('https://shop.example/api/checkout/ecpay/status?order=missing'))).status,401);
+  googleSession = {user:{id:'checkout-buyer'}};
+  const response = await checkout.POST(new NextRequest('https://shop.example/api/checkout/ecpay',{method:'POST'}));
+  assert.equal(response.status,200);
+  assert.equal(response.headers.get('cache-control'),'no-store');
+  const html = await response.text();
+  const id = html.match(/name="MerchantTradeNo" value="([^"]+)"/)[1];
+  assert(html.includes('name="TotalAmount" value="9"'));
+  assert(html.includes('/api/webhooks/ecpay'));
+  assert(html.includes('/api/checkout/ecpay/return'));
+  const url = 'https://shop.example/api/checkout/ecpay/status?order='+id;
+  googleSession = {user:{id:'different-buyer'}};
+  assert.equal((await paymentStatus.GET(new NextRequest(url))).status,404);
+  googleSession = {user:{id:'checkout-buyer'}};
+  const pending = await (await paymentStatus.GET(new NextRequest(url))).json();
+  assert.equal(pending.paymentStatus,'pending');
+  assert.equal(pending.paid,false);
+  await orders.acceptPaymentNotification(notification(id));
+  const confirmed = await paymentStatus.GET(new NextRequest(url));
+  assert.equal(confirmed.headers.get('cache-control'),'no-store');
+  const paid = await confirmed.json();
+  assert.equal(paid.paymentStatus,'paid');
+  assert.equal(paid.gpt4oRemaining,30);
+  assert.equal(paid.canExportIcs,true);
+});
+
+test('concurrent identical callbacks grant once and conflicting transaction is rejected', async () => {
+  await orders.createPaymentOrder('concurrent',unpaid('concurrent-buyer'),'test-merchant',ecpay.ECPAY_PRODUCTION_URL);
+  const signed = notification('concurrent');
+  assert.deepEqual(await Promise.all([orders.acceptPaymentNotification(signed),orders.acceptPaymentNotification(signed)]),[true,true]);
+  assert.equal(await orders.acceptPaymentNotification(notification('concurrent',{TradeNo:'different-transaction'})),false);
+  assert.equal(ent.toUsagePublic(await orders.reconcileEcpayEntitlement(unpaid('concurrent-buyer')),true).gpt4oRemaining,30);
+});
+
+test('old signed entitlement cannot restore already consumed payment credits', async () => {
+  await orders.createPaymentOrder('replay',unpaid('replay-buyer'),'test-merchant',ecpay.ECPAY_PRODUCTION_URL);
+  await orders.acceptPaymentNotification(notification('replay'));
+  const old = await orders.reconcileEcpayEntitlement(unpaid('replay-buyer'));
+  await orders.recordEcpayUsage(ent.incrementParse(old,'gpt-4o'));
+  assert.equal(ent.toUsagePublic(await orders.reconcileEcpayEntitlement(old),true).gpt4oRemaining,29);
+});
+
+test('duplicate webhook fields and unsigned notifications are rejected', async () => {
+  const form = new URLSearchParams(notification('webhooktest'));
+  form.append('TradeAmt','9');
+  const response = await webhook.POST(new Request('https://shop.example/api/webhooks/ecpay',{method:'POST',body:form}));
+  assert.equal(response.status,400);
+});
+
+test('Stripe completed but unpaid session cannot unlock; payment must belong to account', async () => {
+  process.env.STRIPE_SECRET_KEY = 'sk_test_placeholder';
+  const request = () => new NextRequest('https://shop.example/api/checkout/confirm?session_id=cs_test_placeholder');
+  googleSession = null;
+  assert.equal((await stripeConfirm.GET(request())).status,401);
+  googleSession = {user:{id:'stripe-buyer'}};
+  stripeSession = {status:'complete',payment_status:'unpaid',client_reference_id:'stripe-buyer',metadata:{userId:'stripe-buyer'}};
+  assert.equal((await stripeConfirm.GET(request())).status,402);
+  stripeSession.payment_status = 'paid';
+  stripeSession.client_reference_id = 'another-buyer';
+  assert.equal((await stripeConfirm.GET(request())).status,403);
+  stripeSession.client_reference_id = 'stripe-buyer';
+  const response = await stripeConfirm.GET(request());
+  assert.equal(response.status,200);
+  assert.equal((await response.json()).paid,true);
+});

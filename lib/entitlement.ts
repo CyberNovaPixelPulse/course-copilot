@@ -40,6 +40,7 @@ export type Entitlement = {
 };
 
 export type UsagePublic = {
+  stripeCheckoutEnabled: boolean;
   userId: string;
   paid: boolean;
   parseCount: number;
@@ -158,6 +159,7 @@ export function consumeFreeScan(entitlement: Entitlement): Entitlement {
 
 export function toUsagePublic(entitlement: Entitlement, authenticated = false): UsagePublic {
   return {
+    stripeCheckoutEnabled: Boolean(process.env.STRIPE_SECRET_KEY),
     userId: entitlement.userId,
     paid: entitlement.paid,
     parseCount: entitlement.parseCount,

@@ -38,11 +38,13 @@ export async function acceptPaymentNotification(params: Record<string, string>) 
   if (params.RtnCode !== "1" || params.SimulatePaid !== "0") return true;
   if (!params.TradeNo) return false;
   if (order.paid_at != null) return params.TradeNo === String(order.gateway_trade_no);
-  await getTurso().execute({
-    sql: "UPDATE cc_ecpay_orders SET paid_at = ?, gateway_trade_no = ? WHERE trade_no = ? AND paid_at IS NULL",
+  const updated = await getTurso().execute({
+    sql: "UPDATE cc_ecpay_orders SET paid_at = ?, gateway_trade_no = ? WHERE trade_no = ? AND paid_at IS NULL RETURNING gateway_trade_no",
     args: [Date.now(), params.TradeNo, params.MerchantTradeNo],
   });
-  return true;
+  if (updated.rows[0]) return true;
+  const existing = await getTurso().execute({ sql: "SELECT gateway_trade_no FROM cc_ecpay_orders WHERE trade_no = ?", args: [params.MerchantTradeNo] });
+  return existing.rows[0]?.gateway_trade_no === params.TradeNo;
 }
 
 export async function reconcileEcpayEntitlement(entitlement: Entitlement): Promise<Entitlement> {

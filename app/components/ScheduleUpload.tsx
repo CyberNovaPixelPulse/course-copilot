@@ -32,6 +32,7 @@ type PreviewFile = {
 };
 
 type Usage = {
+  stripeCheckoutEnabled?: boolean;
   paid: boolean;
   parseCount: number;
   gpt4oCount: number;
@@ -823,7 +824,7 @@ export default function ScheduleUpload() {
                 >
                   {checkoutTarget === "ecpay" ? t.paywall.paying : t.paywall.pay}
                 </button>
-                <button
+                {usage?.stripeCheckoutEnabled ? <button
                   type="button"
                   disabled={checkoutTarget !== null}
                   onClick={() => void startStripeCheckout()}
@@ -832,7 +833,7 @@ export default function ScheduleUpload() {
                   {checkoutTarget === "stripe"
                     ? (t.paywall.payingStripe ?? "Redirecting to Stripe…")
                     : (t.paywall.payStripe ?? "Pay NT$9 with Stripe")}
-                </button>
+                </button> : null}
               </>
             )}
             <div className="mt-4 border-t border-stone-100 pt-3">

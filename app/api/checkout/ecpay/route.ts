@@ -5,15 +5,11 @@ import {
   ecpayAutoSubmitHtml,
   merchantTradeDate,
   merchantTradeNo,
+  ecpayActionUrl,
+  credentialsForAction,
 } from "@/lib/ecpay";
+import { createPaymentOrder, reconcileEcpayEntitlement } from "@/lib/ecpay-orders";
 import { getGoogleSession } from "@/lib/session";
-
-const ECPAY_ACTION = "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5";
-const ECPAY_KEYS = {
-  merchantId: "3516624",
-  hashKey: "z1b9okzZCrggFURI",
-  hashIv: "C09P62rs2NnOTlHz",
-};
 
 export async function POST(request: NextRequest) {
   const googleSession = await getGoogleSession();
@@ -24,37 +20,42 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const action = ECPAY_ACTION;
-  const keys = ECPAY_KEYS;
+  const action = ecpayActionUrl();
+  const keys = credentialsForAction(action);
+  if (!keys) return NextResponse.json({ error: "綠界付款尚未設定完成。" }, { status: 503 });
+  const origin = new URL(process.env.NEXTAUTH_URL || request.nextUrl.origin).origin;
+  const tradeNo = merchantTradeNo();
 
   const googleId = googleSession.user.id || googleSession.user.email || "";
   let entitlement = readEntitlement(request);
   if (googleId) entitlement = withAccountId(entitlement, googleId);
+  entitlement = await reconcileEcpayEntitlement(entitlement);
 
   const params: Record<string, string> = {
     MerchantID: keys.merchantId,
-    MerchantTradeNo: merchantTradeNo(),
+    MerchantTradeNo: tradeNo,
     MerchantTradeDate: merchantTradeDate(),
     PaymentType: "aio",
     TotalAmount: String(PLAN_PRICE_TWD),
     TradeDesc: "CourseCopilot",
     ItemName: "CourseCopilot 30 Credits",
-    ReturnURL: "https://ics.necterelux.com/api/webhooks/ecpay",
+    ReturnURL: `${origin}/api/webhooks/ecpay`,
+    ClientBackURL: `${origin}/?ecpay_order=${tradeNo}`,
+    OrderResultURL: `${origin}/api/checkout/ecpay/return`,
     ChoosePayment: "ALL",
     EncryptType: "1",
   };
   const checkMacValue = buildCheckMacValue(params, keys.hashKey, keys.hashIv);
   params.CheckMacValue = checkMacValue;
 
-  console.log("=== [ECPAY DEBUG] 送往綠界的完整參數 ===");
-  console.log("Action URL:", action);
-  console.log(JSON.stringify(params, null, 2));
-  console.log("MerchantTradeNo 長度:", params.MerchantTradeNo?.length);
-  console.log("CheckMacValue:", checkMacValue);
-  console.log("=====================================");
+  try {
+    await createPaymentOrder(tradeNo, entitlement, keys.merchantId, action);
+  } catch {
+    return NextResponse.json({ error: "暫時無法建立付款訂單，請稍後再試。" }, { status: 503 });
+  }
 
   const response = new NextResponse(ecpayAutoSubmitHtml(action, params), {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
   });
   attachEntitlement(response, entitlement);
   return response;

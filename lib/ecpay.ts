@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 export const ECPAY_STAGE_URL = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5";
 export const ECPAY_PRODUCTION_URL = "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5";
@@ -39,7 +39,14 @@ export function merchantTradeDate(now = new Date()) {
 }
 
 export function merchantTradeNo() {
-  return `EC${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 1000)}`;
+  return `EC${randomBytes(9).toString("hex")}`;
+}
+
+export function validCheckMacValue(params: Record<string, string>, hashKey: string, hashIv: string) {
+  const supplied = params.CheckMacValue ?? "";
+  if (!/^[a-f0-9]{64}$/i.test(supplied)) return false;
+  const expected = checkMacValue(params, hashKey, hashIv);
+  return timingSafeEqual(Buffer.from(supplied.toUpperCase()), Buffer.from(expected));
 }
 
 export function checkMacValue(params: Record<string, string>, hashKey: string, hashIv: string) {
@@ -50,6 +57,7 @@ export function checkMacValue(params: Record<string, string>, hashKey: string, h
     .join("&");
   const source = `HashKey=${hashKey}&${paramString}&HashIV=${hashIv}`;
   const encoded = encodeURIComponent(source)
+    .replace(/'/g, "%27")
     .replace(/%20/g, "+")
     .replace(/%21/g, "!")
     .replace(/%28/g, "(")

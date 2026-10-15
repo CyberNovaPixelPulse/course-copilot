@@ -6,7 +6,8 @@
     "dev": "next dev -p 2999",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:payments": "node --test tests/ecpay.test.cjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

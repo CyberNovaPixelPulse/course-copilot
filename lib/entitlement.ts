@@ -30,6 +30,8 @@ export type Entitlement = {
   freeScansUsed?: number;
   /** Extra high-precision parses granted by promo codes. */
   bonusCredits?: number;
+  ecpayCredits?: number;
+  ecpayAccountId?: string;
   redeemedCodes?: string[];
   /** Development-only extra credits. Ignored in production. */
   devBonus?: number;
@@ -88,6 +90,8 @@ export function decodeEntitlement(token: string | undefined | null): Entitlement
       freeScansGranted: Boolean(parsed.freeScansGranted),
       freeScansUsed: Number(parsed.freeScansUsed) || 0,
       bonusCredits: Number(parsed.bonusCredits) || 0,
+      ecpayCredits: Number(parsed.ecpayCredits) || 0,
+      ecpayAccountId: typeof parsed.ecpayAccountId === "string" ? parsed.ecpayAccountId : undefined,
       redeemedCodes: Array.isArray(parsed.redeemedCodes)
         ? parsed.redeemedCodes.filter((code): code is string => typeof code === "string")
         : [],
@@ -254,6 +258,9 @@ export function usageBilling(entitlement: Entitlement): UsageBilling {
 
 export function withAccountId(entitlement: Entitlement, accountId: string): Entitlement {
   if (entitlement.userId === accountId) return entitlement;
+  if (entitlement.ecpayAccountId && entitlement.ecpayAccountId !== accountId) {
+    return { ...emptyEntitlement(), userId: accountId };
+  }
   return { ...entitlement, userId: accountId };
 }
 

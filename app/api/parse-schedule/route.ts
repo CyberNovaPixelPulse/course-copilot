@@ -1,3 +1,4 @@
+import { reconcileEcpayEntitlement, recordEcpayUsage } from "@/lib/ecpay-orders";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { parseScheduleImage, type AiCallMetric, type ScheduleMeeting } from "@/lib/parse-schedule";
@@ -5,6 +6,7 @@ import { logAiUsage } from "@/lib/turso";
 import {
   consumeFreeScan,
   freeScansRemaining,
+  gpt4oAllowance,
   incrementParse,
   readEntitlement,
   toUsagePublic,
@@ -512,8 +514,16 @@ export async function POST(request: NextRequest) {
     const googleId = session?.user?.id || session?.user?.email;
     let entitlement = readEntitlement(request);
     if (googleId) entitlement = withAccountId(entitlement, googleId);
+    if (googleId) entitlement = await reconcileEcpayEntitlement(entitlement);
     entitlement = withFreeScans(entitlement, true);
     billing = usageBilling(entitlement);
+    if (entitlement.paid && entitlement.gpt4oCount >= gpt4oAllowance(entitlement)) {
+      return NextResponse.json({
+        error: "高精度辨識額度已用完，請購買新的 30 次額度。",
+        requiresPayment: true,
+        usage: toUsagePublic(entitlement, true),
+      }, { status: 402 });
+    }
     if (!entitlement.paid && freeScansRemaining(entitlement, true) <= 0) {
       const response = NextResponse.json(
         {
@@ -608,7 +618,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const next = entitlement.paid ? incrementParse(entitlement, "gpt-4o") : consumeFreeScan(entitlement);
+    const next = entitlement.paid ? await recordEcpayUsage(incrementParse(entitlement, "gpt-4o")) : consumeFreeScan(entitlement);
     const usage = toUsagePublic(next, authenticated);
     const response = NextResponse.json({ courses, usage, model: "gpt-4o" });
     attachEntitlement(response, next);

@@ -1,3 +1,4 @@
+import { reconcileEcpayEntitlement, recordEcpayUsage } from "@/lib/ecpay-orders";
 import { NextRequest } from "next/server";
 import {
   incrementParse,
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
   const googleId = session?.user?.id || session?.user?.email;
   let entitlement = readEntitlement(request);
   if (googleId) entitlement = withAccountId(entitlement, googleId);
+  if (googleId) entitlement = await reconcileEcpayEntitlement(entitlement);
   entitlement = withFreeScans(entitlement, Boolean(session));
   return usageResponse(entitlement, { signedIn: Boolean(session) }, Boolean(session));
 }
@@ -22,6 +24,7 @@ export async function POST(request: NextRequest) {
   const googleId = session?.user?.id || session?.user?.email;
   let entitlement = readEntitlement(request);
   if (googleId) entitlement = withAccountId(entitlement, googleId);
+  if (googleId) entitlement = await reconcileEcpayEntitlement(entitlement);
   entitlement = withFreeScans(entitlement, Boolean(session));
   let body: { increment?: boolean; model?: "gpt-4o" | "gpt-4o-mini" } = {};
   try {
@@ -31,6 +34,7 @@ export async function POST(request: NextRequest) {
   }
   if (body.increment) {
     entitlement = incrementParse(entitlement, body.model === "gpt-4o" ? "gpt-4o" : "gpt-4o-mini");
+    if (body.model === "gpt-4o") entitlement = await recordEcpayUsage(entitlement);
   }
   return usageResponse(entitlement, { signedIn: Boolean(session) }, Boolean(session));
 }

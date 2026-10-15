@@ -1,3 +1,4 @@
+import { reconcileEcpayEntitlement } from "@/lib/ecpay-orders";
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -138,6 +139,7 @@ async function exportIcs(request: NextRequest) {
 
   let entitlement = resolveEntitlement(request, payload.token);
   if (googleId) entitlement = withAccountId(entitlement, googleId);
+  if (googleId) entitlement = await reconcileEcpayEntitlement(entitlement);
   if (!entitlement.paid) {
     return NextResponse.json(
       { error: "Unlock the paid plan to download an .ics calendar.", requiresPayment: true },

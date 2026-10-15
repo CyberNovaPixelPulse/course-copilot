@@ -23,6 +23,7 @@ const OPEN_PAYWALL_EVENT = "cc-open-paywall";
 const USAGE_UPDATED_EVENT = "cc-usage-updated";
 const CURRENCY_EVENT = "cc-dev-currency";
 const CURRENCY_KEY = "cc_dev_currency";
+const CHECKOUT_SCHEDULE_KEY = "cc_checkout_schedule";
 
 type PreviewFile = {
   id: string;
@@ -197,6 +198,35 @@ export default function ScheduleUpload() {
     async function loadUsage() {
       try {
         const params = new URLSearchParams(window.location.search);
+        const ecpayOrder = params.get("ecpay_order");
+        if (ecpayOrder && /^[a-z0-9]{1,20}$/i.test(ecpayOrder)) {
+          const saved = window.sessionStorage.getItem(CHECKOUT_SCHEDULE_KEY);
+          if (saved) {
+            try {
+              const restored = JSON.parse(saved) as Course[];
+              if (Array.isArray(restored) && !cancelled) setCourses(restored);
+            } catch { /* Ignore an expired or invalid local preview. */ }
+          }
+          for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
+            const response = await fetch(`/api/checkout/ecpay/status?order=${encodeURIComponent(ecpayOrder)}`, { headers: authHeaders() });
+            const data = (await response.json()) as Usage & { paymentStatus?: string; error?: string };
+            if (!response.ok) {
+              if (!cancelled) setError(data.error || "Unable to confirm payment. Please refresh after signing in.");
+              break;
+            }
+            if (!cancelled) applyUsage(data);
+            if (data.paymentStatus === "paid") {
+              if (!cancelled) {
+                setRedeemNotice(document.documentElement.lang.startsWith("zh") ? "付款成功，已加入 30 次高精度額度並解鎖行事曆匯出。" : "Payment confirmed. 30 credits added and calendar export unlocked.");
+                window.history.replaceState({}, "", `${window.location.pathname}#upload`);
+                window.sessionStorage.removeItem(CHECKOUT_SCHEDULE_KEY);
+              }
+              break;
+            }
+            if (attempt === 14 && !cancelled) setError(document.documentElement.lang.startsWith("zh") ? "尚未收到付款完成通知。若已付款，請稍後重新整理此頁，無須再次付款。" : "Payment confirmation is pending. If you have paid, refresh later without paying again.");
+            await new Promise((resolve) => window.setTimeout(resolve, 2000));
+          }
+        }
         if (params.get("checkout") === "success" && params.get("session_id")) {
           const confirm = await fetch(
             `/api/checkout/confirm?session_id=${encodeURIComponent(params.get("session_id")!)}`,
@@ -409,6 +439,7 @@ export default function ScheduleUpload() {
         throw new Error(data?.error || t.paywall.checkoutError);
       }
       const html = await response.text();
+      window.sessionStorage.setItem(CHECKOUT_SCHEDULE_KEY, JSON.stringify(courses));
       document.open();
       document.write(html);
       document.close();

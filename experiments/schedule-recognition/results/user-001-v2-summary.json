@@ -1,0 +1,98 @@
+{
+  "sample_id": "user-supplied-001",
+  "round": "prompt-v2",
+  "started_at": "2026-10-26T16:12:22.853Z",
+  "finished_at": "2026-10-26T16:12:30.755Z",
+  "git_commit": "95388afe94ce3f8630223e9030d427cdba443ea4",
+  "original_sha256": "3a0834b7a39d0710fbf6299511e7cfaa1174184d76fed26239c0713feccd9783",
+  "annotation_sha256": "ff5562196ef379d466d565af64b55dbbbe1e7468ca2381a232921400bc5d1baa",
+  "adapter_sha256": "467cf55edf94d9803044f21b19864db8b8776e6398d29b45518504925f17bc94",
+  "recognizer_sha256": "24da1da4ea1af78c046e170087c811fb9c7c2dab95239d9814b8cfa936610d12",
+  "configuration": {
+    "model": "gpt-4o",
+    "temperature": 0,
+    "top_p": 1e-06,
+    "seed": 42,
+    "image_detail": "high",
+    "timeout_ms": 45000,
+    "max_retries": 0
+  },
+  "attempted_calls": 1,
+  "crop": {
+    "left": 0,
+    "top": 0,
+    "width": 1910,
+    "height": 1594,
+    "sha256": "5eee954950554655cc4a15eabbd44f0815efd9ae0f0cb0a6013e11c70d30c7f6"
+  },
+  "approved_max_calls": 1,
+  "actual_model": "gpt-4o-2024-08-06",
+  "usage": {
+    "input_tokens": 1977,
+    "output_tokens": 740,
+    "latency_ms": 7883
+  },
+  "comparison_controls": {
+    "same_crop": true,
+    "same_human_answers": true,
+    "same_reported_model": true,
+    "same_recognizer": true
+  },
+  "result": {
+    "pipeline_outcome": "success",
+    "sample_quality_outcome": "failed",
+    "expected_courses": 11,
+    "actual_courses": 11,
+    "expected_slots": 14,
+    "actual_slots": 16,
+    "matched_expected_slots": 12,
+    "unmatched_expected_slots": 2,
+    "unexpected_actual_slots": 4,
+    "extra_slots_net": 2,
+    "strict_rejection": false
+  },
+  "differences": [
+    {
+      "annotation_course_ref": "C06",
+      "expected_weekday": "Tuesday",
+      "actual_weekday": "Monday",
+      "time": "16:10–18:00"
+    },
+    {
+      "annotation_course_ref": "C02",
+      "error": "extra slot",
+      "actual_weekday": "Thursday",
+      "time": "10:15–11:30"
+    },
+    {
+      "annotation_course_ref": "C09",
+      "expected_weekday": "Thursday",
+      "actual_weekdays": [
+        "Tuesday",
+        "Friday"
+      ],
+      "time": "14:10–16:00"
+    }
+  ],
+  "baseline_comparison": {
+    "v1_matched_expected_slots": 10,
+    "v1_actual_slots": 14,
+    "v2_matched_expected_slots": 12,
+    "v2_actual_slots": 16,
+    "v1_errors_not_observed_in_v2": [
+      "C07 weekday",
+      "C08 omitted character",
+      "C10 weekday"
+    ],
+    "new_errors_in_v2": [
+      "C02 extra Thursday slot",
+      "C09 missing Thursday slot and unexpected Tuesday/Friday slots"
+    ]
+  },
+  "limitations": [
+    "One development image and one call per prompt, not general accuracy or latency evidence.",
+    "Both versions fail exact-match acceptance.",
+    "One authorized v2 call consumed; no retry or follow-up provider call.",
+    "No product database, account credit operation or deployment."
+  ]
+}

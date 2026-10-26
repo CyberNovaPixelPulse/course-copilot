@@ -1,5 +1,7 @@
 "use client";
 
+import Modal from "./Modal";
+
 import { useEffect, useState } from "react";
 import ReactCrop, { centerCrop, type PercentCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
@@ -58,13 +60,14 @@ export default function ScheduleCropModal({
   }, [file]);
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-900/50 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="crop-title"
-        className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl"
-      >
+    <Modal
+      onClose={() => {
+        if (!busy) onCancel();
+      }}
+      labelledBy="crop-title"
+      className="w-full max-w-3xl bg-white"
+    >
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl">
         <div className="border-b border-stone-200 px-5 py-4">
           <h2 id="crop-title" className="text-lg font-semibold text-stone-900">
             {title}
@@ -132,6 +135,6 @@ export default function ScheduleCropModal({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

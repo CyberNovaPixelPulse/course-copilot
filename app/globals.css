@@ -39,3 +39,13 @@ body {
   background: #d6d3d1;
   background-clip: padding-box;
 }
+
+/* Keep mobile controls comfortable without distorting exact-minute calendar cards. */
+@media (pointer: coarse) {
+  button:not([data-calendar-event]), input, select, summary {
+    min-height: 44px;
+  }
+  button:not([data-calendar-event]) { min-width: 44px; }
+}
+
+body:has(dialog[open]) { overflow: hidden; }

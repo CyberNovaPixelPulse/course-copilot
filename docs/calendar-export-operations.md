@@ -1,6 +1,6 @@
 # 行事曆匯出驗收
 
-- `npm run test:calendar-export`：跨匯出協調介面驗證固定快照、一次準備／首次下載、回應檢查、三十秒上限、重試、失效與獨立圖片狀態。以受控 HTTP、時間、交付與繪圖替身測試可觀察行為。
+- `npm run test:calendar-export`：跨匯出協調介面驗證固定快照、一次準備／使用者明確交付、回應檢查、三十秒上限、重試、失效與獨立圖片狀態。以受控 HTTP、時間、交付與繪圖替身測試可觀察行為。
 - 啟動 `npm run dev -- --hostname 127.0.0.1`，另執行 `npm run test:calendar-export:browser`。首次需安裝 Playwright Chromium，可用 CHECKOUT_TEST_ORIGIN 指定本機埠。
 - 瀏覽器攔截所有應用 API，未知路徑不轉送。驗證實際下載事件及檔案文字、固定快照與實際圖片文字、連點、替換、帳號切換、超時、無效回應、交付失敗、重開、同檔重新下載，以及模擬 iOS 呈現與明確替代操作。
 - `npm run test:course-time:browser`、`npm run test:recognition-batch:browser`、`npm run test:checkout:browser`、`npm run test:entitlement-display:browser` 為既有流程回歸。課程時段修復後依新契約明確選擇改用目前課表重新匯出。

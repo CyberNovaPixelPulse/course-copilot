@@ -131,7 +131,11 @@ const origin = process.env.CHECKOUT_TEST_ORIGIN || "http://127.0.0.1:2999";
   async function close() {
     await result().getByRole("button").last().click();
   }
-  async function count(n) {
+  async function count(n, deliver = false) {
+    if (deliver)
+      await result()
+        .getByRole("button", { name: "下載 ICS 檔案", exact: true })
+        .click();
     await expect.poll(() => downloads.length).toBe(n);
   }
   try {
@@ -147,7 +151,7 @@ const origin = process.env.CHECKOUT_TEST_ORIGIN || "http://127.0.0.1:2999";
       window.__failCard = true;
     });
     await held.shift()();
-    await count(1);
+    await count(1, true);
     await expect(result()).toBeVisible();
     await expect(result()).toContainText("先前的課表版本");
     const text = fs.readFileSync(await downloads[0].path(), "utf8");
@@ -189,7 +193,7 @@ const origin = process.env.CHECKOUT_TEST_ORIGIN || "http://127.0.0.1:2999";
     await status()
       .getByRole("button", { name: "改用目前課表重新匯出", exact: true })
       .click();
-    await count(3);
+    await count(3, true);
     await held.shift()();
     await expect(result()).toBeVisible();
     assert.equal(exports.length, 3);
@@ -204,7 +208,7 @@ const origin = process.env.CHECKOUT_TEST_ORIGIN || "http://127.0.0.1:2999";
     await status()
       .getByRole("button", { name: "重試準備", exact: true })
       .click();
-    await count(4);
+    await count(4, true);
     assert.deepEqual(exports[3], exports[4]);
     await close();
     await page.evaluate(() => {
@@ -212,6 +216,9 @@ const origin = process.env.CHECKOUT_TEST_ORIGIN || "http://127.0.0.1:2999";
     });
     await status()
       .getByRole("button", { name: "改用目前課表重新匯出", exact: true })
+      .click();
+    await result()
+      .getByRole("button", { name: "下載 ICS 檔案", exact: true })
       .click();
     await expect(result().getByRole("alert")).toBeVisible();
     assert.equal(downloads.length, 4);
@@ -251,7 +258,7 @@ const origin = process.env.CHECKOUT_TEST_ORIGIN || "http://127.0.0.1:2999";
     await status()
       .getByRole("button", { name: "重試準備", exact: true })
       .click();
-    await count(6);
+    await count(6, true);
     await close();
     await page.evaluate(() =>
       Object.defineProperty(navigator, "userAgent", {
@@ -311,7 +318,7 @@ const origin = process.env.CHECKOUT_TEST_ORIGIN || "http://127.0.0.1:2999";
       ),
     );
     await headerDownload().click();
-    await count(beforeLeave + 1);
+    await count(beforeLeave + 1, true);
     await close();
     modes.push("hold");
     await status()

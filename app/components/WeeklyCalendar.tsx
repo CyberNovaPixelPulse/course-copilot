@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useRef, useState } from "react";
+import Modal from "./Modal";
 import {
   WEEKDAYS,
   type Course,
@@ -77,10 +77,13 @@ export default function WeeklyCalendar({
   courses,
   onChange,
 }: WeeklyCalendarProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const dragRef = useRef<DragState | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [dragWindow, setDragWindow] = useState<TimeWindow | null>(null);
-  const [timeDraft, setTimeDraft] = useState({
+  const [editDraft, setEditDraft] = useState({
+    name: "",
+    professor: "",
     startTime: "",
     endTime: "",
     location: "",
@@ -96,20 +99,6 @@ export default function WeeklyCalendar({
     courseIndex: number;
     slotIndex: number;
   } | null>(null);
-
-  useEffect(() => {
-    if (!editing) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setEditing(null);
-    };
-    document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [editing]);
 
   const days = inspection.days;
   const hours = Array.from(
@@ -181,7 +170,9 @@ export default function WeeklyCalendar({
 
   function openEdit(courseIndex: number, slotIndex: number) {
     const slot = courses[courseIndex].slots[slotIndex];
-    setTimeDraft({
+    setEditDraft({
+      name: courses[courseIndex].name,
+      professor: courses[courseIndex].professor,
       startTime: slot?.startTime ?? "09:00",
       endTime: slot?.endTime ?? "10:00",
       weekday: slot?.weekday ?? "Monday",
@@ -191,9 +182,16 @@ export default function WeeklyCalendar({
     setEditing({ courseIndex, slotIndex });
   }
 
-  function saveTime() {
+  function saveEdit() {
     if (!editing) return;
-    const normalized = normalizeSlot(timeDraft);
+    if (!editDraft.name.trim()) {
+      setEditError(t.upload.addCourseNameRequired ?? "請輸入課程名稱");
+      return;
+    }
+    const normalized = normalizeSlot({
+      ...editDraft,
+      location: editDraft.location.trim(),
+    });
     if (!normalized.slot) {
       setEditError(normalized.problem);
       return;
@@ -205,13 +203,13 @@ export default function WeeklyCalendar({
           ? c
           : {
               ...c,
+              name: editDraft.name.trim(),
+              professor: editDraft.professor.trim(),
               slots:
                 editing.slotIndex < 0
                   ? [...c.slots, next]
                   : c.slots.map((s, j) =>
-                      j === editing.slotIndex
-                        ? { ...s, ...next, location: s.location }
-                        : s,
+                      j === editing.slotIndex ? { ...s, ...next } : s,
                     ),
             },
       ),
@@ -318,12 +316,13 @@ export default function WeeklyCalendar({
           c.slots.map((s, si) =>
             !slotProblem(s) ? (
               <button
-                className="block p-2"
+                className="block min-h-11 p-2"
                 type="button"
                 key={`${ci}-${si}`}
                 onClick={() => openEdit(ci, si)}
               >
-                {c.name} · {s.weekday} {s.startTime}–{s.endTime}
+                {c.name} · {t.calendar.weekdays[s.weekday] ?? s.weekday}{" "}
+                {s.startTime}–{s.endTime}
               </button>
             ) : null,
           ),
@@ -342,7 +341,9 @@ export default function WeeklyCalendar({
               <div key={`${p.courseIndex}-${p.slotIndex}`} className="my-2">
                 <p>
                   {c.name} ·{" "}
-                  {s ? `${s.weekday} ${s.startTime}–${s.endTime}` : "沒有時段"}{" "}
+                  {s
+                    ? `${t.calendar.weekdays[s.weekday] ?? s.weekday} ${s.startTime}–${s.endTime}`
+                    : "沒有時段"}{" "}
                   · {p.message}
                 </p>
                 <button
@@ -363,7 +364,36 @@ export default function WeeklyCalendar({
           })}
         </section>
       ) : null}
-      <div className="overflow-x-auto">
+      <nav
+        aria-label={
+          locale.startsWith("zh") ? "星期快速定位" : "Jump to weekday"
+        }
+        className="mb-2 flex flex-wrap gap-1 sm:hidden"
+      >
+        {days.map((day, index) => (
+          <button
+            type="button"
+            className="min-h-11 min-w-11 rounded-lg border px-2 text-sm"
+            key={day}
+            onClick={() => {
+              const scroller = scrollRef.current;
+              if (scroller)
+                scroller.scrollTo({
+                  left: (index * (scroller.scrollWidth - 56)) / days.length,
+                  behavior: "smooth",
+                });
+            }}
+          >
+            {t.calendar.weekdays[day]}
+          </button>
+        ))}
+      </nav>
+      <p className="mb-2 text-sm text-stone-600 sm:hidden">
+        {locale.startsWith("zh")
+          ? "左右滑動查看整週，或點選上方星期。下方週曆也可用上方精確編輯清單操作。"
+          : "Swipe sideways or choose a weekday. Use the detailed list above for precise editing."}
+      </p>
+      <div ref={scrollRef} className="overflow-x-auto">
         <div
           className="min-w-[720px] pb-4"
           style={{
@@ -427,6 +457,7 @@ export default function WeeklyCalendar({
                   <button
                     key={calendarEvent.key}
                     type="button"
+                    data-calendar-event
                     aria-label={`${calendarEvent.course.name} ${calendarEvent.slot.startTime} to ${calendarEvent.slot.endTime}`}
                     className="absolute touch-none overflow-hidden rounded-xl px-2 py-1 text-left shadow-sm outline-none ring-0 select-none"
                     style={{
@@ -489,148 +520,115 @@ export default function WeeklyCalendar({
         </div>
       </div>
 
-      {editing && editingEvent
-        ? createPortal(
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-              onClick={() => setEditing(null)}
+      {editing && editingEvent ? (
+        <Modal
+          onClose={() => setEditing(null)}
+          label={t.calendar.edit}
+          className="w-full max-w-md bg-white p-4 dark:bg-neutral-900"
+        >
+          <p className="text-sm font-semibold text-stone-900 dark:text-neutral-100">
+            {t.calendar.edit}
+          </p>
+          <label className="mt-3 block text-xs font-medium text-stone-500">
+            {t.calendar.course}
+            <input
+              className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
+              value={editDraft.name}
+              onChange={(event) =>
+                setEditDraft({ ...editDraft, name: event.target.value })
+              }
+            />
+          </label>
+          <label className="mt-3 block text-xs font-medium text-stone-500">
+            {t.calendar.professor}
+            <input
+              className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
+              value={editDraft.professor}
+              onChange={(event) =>
+                setEditDraft({ ...editDraft, professor: event.target.value })
+              }
+            />
+          </label>
+          <label className="mt-3 block text-xs font-medium text-stone-500">
+            {t.calendar.location}
+            <input
+              className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
+              value={editDraft.location}
+              onChange={(event) =>
+                setEditDraft({ ...editDraft, location: event.target.value })
+              }
+            />
+          </label>
+          <label className="mt-3 block text-xs font-medium text-stone-500">
+            {t.calendar.weekday}
+            <select
+              className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
+              value={editDraft.weekday}
+              onChange={(event) =>
+                setEditDraft({
+                  ...editDraft,
+                  weekday: event.target.value as Weekday,
+                })
+              }
             >
-              <div
-                className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl dark:bg-neutral-900"
-                onClick={(event) => event.stopPropagation()}
-                role="dialog"
-                aria-label={t.calendar.edit}
-              >
-                <p className="text-sm font-semibold text-stone-900 dark:text-neutral-100">
-                  {t.calendar.edit}
-                </p>
-                <label className="mt-3 block text-xs font-medium text-stone-500">
-                  {t.calendar.course}
-                  <input
-                    className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
-                    value={editingEvent.course.name}
-                    onChange={(event) =>
-                      patchSlot(
-                        editing.courseIndex,
-                        editing.slotIndex,
-                        {},
-                        { name: event.target.value },
-                      )
-                    }
-                  />
-                </label>
-                <label className="mt-3 block text-xs font-medium text-stone-500">
-                  {t.calendar.professor}
-                  <input
-                    className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
-                    value={editingEvent.course.professor}
-                    onChange={(event) =>
-                      patchSlot(
-                        editing.courseIndex,
-                        editing.slotIndex,
-                        {},
-                        { professor: event.target.value },
-                      )
-                    }
-                  />
-                </label>
-                <label className="mt-3 block text-xs font-medium text-stone-500">
-                  {t.calendar.location}
-                  <input
-                    className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
-                    value={
-                      editing.slotIndex < 0
-                        ? timeDraft.location
-                        : editingEvent.slot.location
-                    }
-                    onChange={(event) => {
-                      if (editing.slotIndex < 0)
-                        setTimeDraft({
-                          ...timeDraft,
-                          location: event.target.value,
-                        });
-                      else
-                        patchSlot(editing.courseIndex, editing.slotIndex, {
-                          location: event.target.value,
-                        });
-                    }}
-                  />
-                </label>
-                <label className="mt-3 block text-xs font-medium text-stone-500">
-                  {t.calendar.weekday}
-                  <select
-                    className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
-                    value={timeDraft.weekday}
-                    onChange={(event) =>
-                      setTimeDraft({
-                        ...timeDraft,
-                        weekday: event.target.value as Weekday,
-                      })
-                    }
-                  >
-                    {!WEEKDAYS.includes(timeDraft.weekday) ? (
-                      <option value={timeDraft.weekday}>
-                        無效星期：{timeDraft.weekday}
-                      </option>
-                    ) : null}
-                    {WEEKDAYS.map((day) => (
-                      <option key={day} value={day}>
-                        {t.calendar.weekdays[day]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="mt-3 block">
-                  開始時間
-                  <input
-                    aria-label="開始時間"
-                    className="block w-full border p-2"
-                    value={timeDraft.startTime}
-                    onChange={(e) =>
-                      setTimeDraft({ ...timeDraft, startTime: e.target.value })
-                    }
-                  />
-                </label>
-                <label className="mt-3 block">
-                  結束時間
-                  <input
-                    aria-label="結束時間"
-                    className="block w-full border p-2"
-                    value={timeDraft.endTime}
-                    onChange={(e) =>
-                      setTimeDraft({ ...timeDraft, endTime: e.target.value })
-                    }
-                  />
-                </label>
-                {editError ? <p role="alert">{editError}</p> : null}
-                <button type="button" onClick={() => setEditing(null)}>
-                  取消
-                </button>
-                <div className="mt-4 flex justify-between">
-                  <button
-                    type="button"
-                    className="rounded-full px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
-                    onClick={() =>
-                      deleteSlot(editing.courseIndex, editing.slotIndex)
-                    }
-                  >
-                    {editingEvent.course.slots.length <= 1
-                      ? "刪除這門課"
-                      : "刪除這個時段"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-full bg-stone-900 px-4 py-1.5 text-sm font-medium text-white"
-                    onClick={saveTime}
-                  >
-                    {t.calendar.done}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+              {!WEEKDAYS.includes(editDraft.weekday) ? (
+                <option value={editDraft.weekday}>
+                  無效星期：{editDraft.weekday}
+                </option>
+              ) : null}
+              {WEEKDAYS.map((day) => (
+                <option key={day} value={day}>
+                  {t.calendar.weekdays[day]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="mt-3 block">
+            開始時間
+            <input
+              aria-label="開始時間"
+              className="block w-full border p-2"
+              value={editDraft.startTime}
+              onChange={(e) =>
+                setEditDraft({ ...editDraft, startTime: e.target.value })
+              }
+            />
+          </label>
+          <label className="mt-3 block">
+            結束時間
+            <input
+              aria-label="結束時間"
+              className="block w-full border p-2"
+              value={editDraft.endTime}
+              onChange={(e) =>
+                setEditDraft({ ...editDraft, endTime: e.target.value })
+              }
+            />
+          </label>
+          {editError ? <p role="alert">{editError}</p> : null}
+          <button type="button" onClick={() => setEditing(null)}>
+            取消
+          </button>
+          <div className="mt-4 flex justify-between">
+            <button
+              type="button"
+              className="rounded-full px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+              onClick={() => deleteSlot(editing.courseIndex, editing.slotIndex)}
+            >
+              {editingEvent.course.slots.length <= 1
+                ? "刪除這門課"
+                : "刪除這個時段"}
+            </button>
+            <button
+              type="button"
+              className="rounded-full bg-stone-900 px-4 py-1.5 text-sm font-medium text-white"
+              onClick={saveEdit}
+            >
+              {t.calendar.done}
+            </button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

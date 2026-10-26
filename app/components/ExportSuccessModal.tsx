@@ -1,5 +1,8 @@
 "use client";
 
+import Modal from "./Modal";
+import { calendarDateRange } from "@/lib/calendar-export-dates";
+
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -23,6 +26,7 @@ export default function ExportSuccessModal({
     flow.getSnapshot,
   );
   const onClose = flow.close;
+  const dates = state.result ? calendarDateRange(state.result.ics) : null;
   const [card, setCard] = useState<{ blob: Blob; url: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [cardError, setCardError] = useState("");
@@ -53,14 +57,6 @@ export default function ExportSuccessModal({
     const timer = window.setTimeout(() => setCopied(false), 2500);
     return () => window.clearTimeout(timer);
   }, [copied]);
-
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   async function copyShare() {
     try {
@@ -93,13 +89,12 @@ export default function ExportSuccessModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-stone-900/50 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="export-success-title"
-        className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl"
-      >
+    <Modal
+      onClose={onClose}
+      labelledBy="export-success-title"
+      className="w-full max-w-4xl bg-white"
+    >
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl">
         <div className="border-b border-stone-200 px-5 py-4 sm:px-6">
           <p className="text-sm font-semibold text-indigo-600">
             {text("行事曆匯出", "Calendar export")}
@@ -176,6 +171,20 @@ export default function ExportSuccessModal({
                         "File ready; download or import is not confirmed.",
                       )}
             </p>
+            <div className="rounded-xl bg-stone-50 p-3" role="note">
+              {dates ? (
+                <p className="font-semibold">
+                  {text("檔案日期範圍", "File date range")}: {dates.first} –{" "}
+                  {dates.last}
+                </p>
+              ) : null}
+              <p>
+                {text(
+                  "每週重複 16 次；使用裝置的本地時間，不指定時區。日期以伺服器產生當天起算，並非學校學期；當天即使時間已過仍可能包含。重新匯入可能建立重複事件。確認日期與時間後再下載。",
+                  "Repeats weekly 16 times using your calendar's local time, with no fixed time zone. Dates start on or after the server generation date, not a school term; today may be included even if class time has passed. Re-importing may create duplicates. Check dates and times before downloading.",
+                )}
+              </p>
+            </div>
             <button
               type="button"
               disabled={state.deliveryPending}
@@ -202,12 +211,7 @@ export default function ExportSuccessModal({
                 </p>
               </>
             ) : null}
-            <p className="rounded-xl bg-stone-50 p-3">
-              {text(
-                "日期以產生當天的伺服器日期往後找對應星期（當天即使時間已過仍使用當天），每週重複 16 次；並非依學校學期安排。重複匯入可能新增重複事件，請自行檢查日曆。",
-                "Dates use the corresponding weekday on or after the server generation date, including today even if class time has passed, repeating weekly 16 times. This is not a school term schedule. Repeated imports may add duplicates; check your calendar.",
-              )}
-            </p>
+
             <p className="rounded-2xl bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-700">
               {message}
             </p>
@@ -265,6 +269,6 @@ export default function ExportSuccessModal({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

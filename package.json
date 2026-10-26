@@ -21,7 +21,8 @@
     "test:course-time": "node --test tests/course-time.test.cjs",
     "test:course-time:browser": "node tests/browser/course-time.cjs",
     "test:calendar-export": "node --test tests/calendar-export.test.cjs",
-    "test:calendar-export:browser": "node tests/browser/calendar-export.cjs"
+    "test:calendar-export:browser": "node tests/browser/calendar-export.cjs",
+    "test:ux:browser": "node tests/browser/ux-heuristics.cjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

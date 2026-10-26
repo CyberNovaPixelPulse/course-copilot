@@ -23,6 +23,8 @@ import CalendarExportStatus, { useCalendarExport } from "./CalendarExport";
 import ExportSuccessModal from "./ExportSuccessModal";
 import ScheduleCropModal from "./ScheduleCropModal";
 import AddCourseModal from "./AddCourseModal";
+import ScheduleDraft from "./ScheduleDraft";
+import Modal from "./Modal";
 import type { Course } from "@/lib/types";
 import { useSession, signIn } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
@@ -83,6 +85,7 @@ function ScheduleUploadScreen() {
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<PreviewFile[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [sampleBackup, setSampleBackup] = useState<Course[] | null>(null);
   const [calendarKey, setCalendarKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const { state: entitlement, store: entitlementStore } = useEntitlements();
@@ -136,6 +139,8 @@ function ScheduleUploadScreen() {
   }, []);
 
   function loadSampleSchedule() {
+    if (!showingSample.current && courses.length)
+      setSampleBackup(structuredClone(courses));
     setError(null);
     scrollToCalendar.current = true;
     showingSample.current = true;
@@ -541,11 +546,38 @@ function ScheduleUploadScreen() {
         </button>
       </div>
 
+      {sampleBackup ? (
+        <div role="status" className="my-3 text-sm">
+          {locale.startsWith("zh")
+            ? "已載入範例；原課表仍可復原。"
+            : "Sample loaded. Your previous schedule can be restored."}
+          <button
+            type="button"
+            className="ml-3 min-h-11 underline"
+            onClick={() => {
+              showingSample.current = false;
+              setCourses(sampleBackup);
+              setSampleBackup(null);
+            }}
+          >
+            {locale.startsWith("zh")
+              ? "復原範例替換"
+              : "Undo sample replacement"}
+          </button>
+        </div>
+      ) : null}
+      <ScheduleDraft
+        accountId={accountId}
+        courses={showingSample.current && sampleBackup ? sampleBackup : courses}
+        onRestore={restoreSchedule}
+        zh={locale.startsWith("zh")}
+      />
       <CalendarExportStatus flow={calendarExport.flow} courses={courses} />
       {courses.length === 0 ? (
         <button
           type="button"
           className="mt-4 rounded-full border px-4 py-2"
+          data-modal-return
           onClick={() => setAddCourseOpen(true)}
         >
           {t.upload.addCourse ?? "+ Add course"}
@@ -564,6 +596,7 @@ function ScheduleUploadScreen() {
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <button
                   type="button"
+                  data-modal-return
                   onClick={() => setAddCourseOpen(true)}
                   className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-white dark:text-slate-700 dark:hover:bg-slate-50"
                 >
@@ -607,7 +640,10 @@ function ScheduleUploadScreen() {
           <WeeklyCalendar
             key={calendarKey}
             courses={courses}
-            onChange={setCourses}
+            onChange={(next) => {
+              showingSample.current = false;
+              setCourses(next);
+            }}
           />
         </div>
       ) : null}
@@ -616,6 +652,7 @@ function ScheduleUploadScreen() {
         <AddCourseModal
           onClose={() => setAddCourseOpen(false)}
           onAdd={(course) => {
+            showingSample.current = false;
             setCourses((current) => [...current, course]);
             setAddCourseOpen(false);
           }}
@@ -670,130 +707,120 @@ function ScheduleUploadScreen() {
       ) : null}
 
       {showPaywall ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 p-4"
-          onClick={() => {
+        <Modal
+          labelledBy="paywall-title"
+          className="w-full max-w-md bg-white p-6"
+          onClose={() => {
             setShowPaywall(false);
             setShowPromoInput(false);
             setPromoError(null);
           }}
         >
-          <div
-            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl"
-            role="dialog"
-            aria-labelledby="paywall-title"
-            onClick={(event) => event.stopPropagation()}
+          <p
+            id="paywall-title"
+            className="text-lg font-semibold text-stone-900"
           >
-            <p
-              id="paywall-title"
-              className="text-lg font-semibold text-stone-900"
+            {t.paywall.title}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-stone-600">
+            {withPrice(t.paywall.offer)}
+          </p>
+          <p className="mt-3 text-sm text-stone-500">
+            {withPrice(t.paywall.body)}
+          </p>
+          {!signedIn ? (
+            <button
+              type="button"
+              onClick={() => void signIn("google", { callbackUrl: "/#upload" })}
+              className="mt-5 w-full rounded-full bg-stone-900 px-4 py-3 text-sm font-medium text-white hover:bg-stone-800"
             >
-              {t.paywall.title}
-            </p>
-            <p className="mt-2 text-sm leading-6 text-stone-600">
-              {withPrice(t.paywall.offer)}
-            </p>
-            <p className="mt-3 text-sm text-stone-500">
-              {withPrice(t.paywall.body)}
-            </p>
-            {!signedIn ? (
+              {t.nav.signIn}
+            </button>
+          ) : (
+            <>
               <button
                 type="button"
-                onClick={() =>
-                  void signIn("google", { callbackUrl: "/#upload" })
-                }
-                className="mt-5 w-full rounded-full bg-stone-900 px-4 py-3 text-sm font-medium text-white hover:bg-stone-800"
+                disabled={checkoutTarget !== null}
+                onClick={() => void startCheckout("ecpay")}
+                className="mt-5 w-full rounded-full bg-indigo-600 px-4 py-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
               >
-                {t.nav.signIn}
+                {checkoutTarget === "ecpay" ? t.paywall.paying : t.paywall.pay}
               </button>
-            ) : (
-              <>
+              {usage?.stripeCheckoutEnabled ? (
                 <button
                   type="button"
                   disabled={checkoutTarget !== null}
-                  onClick={() => void startCheckout("ecpay")}
-                  className="mt-5 w-full rounded-full bg-indigo-600 px-4 py-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+                  onClick={() => void startCheckout("stripe")}
+                  className="mt-2 w-full rounded-full border border-stone-300 bg-white px-4 py-3 text-sm font-medium text-stone-900 hover:bg-stone-50 disabled:opacity-60"
                 >
-                  {checkoutTarget === "ecpay"
-                    ? t.paywall.paying
-                    : t.paywall.pay}
+                  {checkoutTarget === "stripe"
+                    ? (t.paywall.payingStripe ?? "Redirecting to Stripe…")
+                    : (t.paywall.payStripe ?? "Pay NT$9 with Stripe")}
                 </button>
-                {usage?.stripeCheckoutEnabled ? (
-                  <button
-                    type="button"
-                    disabled={checkoutTarget !== null}
-                    onClick={() => void startCheckout("stripe")}
-                    className="mt-2 w-full rounded-full border border-stone-300 bg-white px-4 py-3 text-sm font-medium text-stone-900 hover:bg-stone-50 disabled:opacity-60"
-                  >
-                    {checkoutTarget === "stripe"
-                      ? (t.paywall.payingStripe ?? "Redirecting to Stripe…")
-                      : (t.paywall.payStripe ?? "Pay NT$9 with Stripe")}
-                  </button>
-                ) : null}
-              </>
-            )}
-            <div className="mt-4 border-t border-stone-100 pt-3">
-              <button
-                type="button"
-                aria-expanded={showPromoInput}
-                onClick={() => {
-                  setShowPromoInput((open) => !open);
-                  setPromoError(null);
-                }}
-                className="cursor-pointer text-sm text-slate-500 underline transition-colors hover:text-slate-800"
-              >
-                {showPromoInput
-                  ? (t.paywall.promoCollapse ?? "收合優惠碼")
-                  : (t.paywall.promoToggle ?? "有優惠碼？點此兌換")}
-              </button>
-              {showPromoInput ? (
-                <form
-                  className="mt-3 flex gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void redeemPromo();
-                  }}
-                >
-                  <input
-                    value={promoCode}
-                    onChange={(event) => {
-                      setPromoCode(event.target.value);
-                      setPromoError(null);
-                    }}
-                    placeholder={t.paywall.promoPlaceholder ?? "優惠碼"}
-                    aria-label={t.paywall.promoLabel ?? "Enter Promo Code"}
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="min-w-0 flex-1 rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
-                  />
-                  <button
-                    type="submit"
-                    disabled={promoLoading}
-                    className="shrink-0 rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
-                  >
-                    {t.paywall.promoRedeem ?? "Redeem"}
-                  </button>
-                </form>
               ) : null}
-              {promoError ? (
-                <p className="mt-2 text-sm text-red-600" role="alert">
-                  {promoError}
-                </p>
-              ) : null}
-            </div>
+            </>
+          )}
+          <div className="mt-4 border-t border-stone-100 pt-3">
             <button
               type="button"
+              aria-expanded={showPromoInput}
               onClick={() => {
-                setShowPaywall(false);
-                setShowPromoInput(false);
+                setShowPromoInput((open) => !open);
                 setPromoError(null);
               }}
-              className="mt-2 w-full rounded-full px-4 py-2 text-sm text-stone-500 hover:bg-stone-50"
+              className="cursor-pointer text-sm text-slate-500 underline transition-colors hover:text-slate-800"
             >
-              {t.paywall.keepFree}
+              {showPromoInput
+                ? (t.paywall.promoCollapse ?? "收合優惠碼")
+                : (t.paywall.promoToggle ?? "有優惠碼？點此兌換")}
             </button>
+            {showPromoInput ? (
+              <form
+                className="mt-3 flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void redeemPromo();
+                }}
+              >
+                <input
+                  value={promoCode}
+                  onChange={(event) => {
+                    setPromoCode(event.target.value);
+                    setPromoError(null);
+                  }}
+                  placeholder={t.paywall.promoPlaceholder ?? "優惠碼"}
+                  aria-label={t.paywall.promoLabel ?? "Enter Promo Code"}
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="min-w-0 flex-1 rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
+                />
+                <button
+                  type="submit"
+                  disabled={promoLoading}
+                  className="shrink-0 rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
+                >
+                  {t.paywall.promoRedeem ?? "Redeem"}
+                </button>
+              </form>
+            ) : null}
+            {promoError ? (
+              <p className="mt-2 text-sm text-red-600" role="alert">
+                {promoError}
+              </p>
+            ) : null}
           </div>
-        </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowPaywall(false);
+              setShowPromoInput(false);
+              setPromoError(null);
+            }}
+            className="mt-2 w-full rounded-full px-4 py-2 text-sm text-stone-500 hover:bg-stone-50"
+          >
+            {t.paywall.keepFree}
+          </button>
+        </Modal>
       ) : null}
     </section>
   );

@@ -74,7 +74,7 @@ function setup(overrides = {}) {
     timers,
   };
 }
-test("one fixed snapshot produces one request and one initial download despite repeated clicks or later edits", async () => {
+test("one fixed snapshot produces one request and waits for explicit delivery despite repeated clicks or later edits", async () => {
   const wait = deferred(),
     sent = [];
   const x = setup({
@@ -91,6 +91,8 @@ test("one fixed snapshot produces one request and one initial download despite r
   wait.resolve(response());
   await first;
   assert.equal(x.flow.getSnapshot().result.courses[0].name, "A");
+  assert.deepEqual(x.deliveries, []);
+  await x.flow.deliver("download");
   assert.deepEqual(x.deliveries, [{ body: ics, method: "download" }]);
   x.flow.close();
   x.flow.reopen();
@@ -130,7 +132,7 @@ test("replacing an export and disposing its account prevent late responses from 
   old.resolve(response());
   await first;
   assert.equal(x.flow.getSnapshot().result.courses[0].name, "B");
-  assert.equal(x.deliveries.length, 1);
+  assert.equal(x.deliveries.length, 0);
   const held = deferred(),
     y = setup({ prepare: () => held.promise });
   const task = y.flow.start(courses());
@@ -161,7 +163,7 @@ test("thirty-second preparation timeout settles even an uncooperative transport;
   await Promise.resolve();
   assert.equal(sent.length, 2);
   assert.equal(sent[1][0].name, "A");
-  assert.equal(x.deliveries.length, 1);
+  assert.equal(x.deliveries.length, 0);
 });
 test("authentication, payment and delivery failures offer distinct recovery; prepared files are reused", async () => {
   for (const [status, kind] of [
@@ -187,6 +189,7 @@ test("authentication, payment and delivery failures offer distinct recovery; pre
     },
   });
   await x.flow.start(courses());
+  await x.flow.deliver("download");
   assert.equal(x.flow.getSnapshot().problem.kind, "delivery");
   assert.ok(x.flow.getSnapshot().result);
   fail = false;
@@ -204,7 +207,7 @@ test("share image failure is independent of ICS and retry never prepares another
   });
   await x.flow.start(courses());
   assert.equal(x.flow.getSnapshot().image.phase, "error");
-  assert.equal(x.deliveries.length, 1);
+  assert.equal(x.deliveries.length, 0);
   fail = false;
   await x.flow.retryImage();
   assert.equal(await x.flow.getSnapshot().image.blob.text(), "A");
@@ -257,13 +260,13 @@ test("delivery refactor preserves existing dates, floating times, weekly count a
 test("preparation timeout ends when file arrives, independently of delivery and image work", async () => {
   const held = deferred(),
     x = setup({ deliver: () => held.promise });
-  const task = x.flow.start(courses());
-  await Promise.resolve();
-  await Promise.resolve();
+  await x.flow.start(courses());
+  const delivery = x.flow.deliver("download");
   assert.ok(x.flow.getSnapshot().result);
+  assert.equal(x.flow.getSnapshot().deliveryPending, true);
   assert.equal(x.timers.size, 0);
   held.resolve();
-  await task;
+  await delivery;
 });
 test("repeated explicit replacement with the identical pending snapshot is coalesced", async () => {
   const held = deferred(),
@@ -279,5 +282,5 @@ test("repeated explicit replacement with the identical pending snapshot is coale
   assert.equal(sent.length, 1);
   held.resolve(response());
   await Promise.all([first, second]);
-  assert.equal(x.deliveries.length, 1);
+  assert.equal(x.deliveries.length, 0);
 });

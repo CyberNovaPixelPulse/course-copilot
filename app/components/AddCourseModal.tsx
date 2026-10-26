@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
+import Modal from "./Modal";
 import { WEEKDAYS, type Course, type Weekday } from "@/lib/types";
 import { normalizeSlot } from "@/lib/course-time";
 import { useI18n } from "@/lib/i18n";
@@ -23,14 +24,6 @@ export default function AddCourseModal({
   const [location, setLocation] = useState("");
   const [professor, setProfessor] = useState("");
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -60,17 +53,12 @@ export default function AddCourseModal({
     "mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label={t.upload.addCourseCancel ?? "取消"}
-        className="absolute inset-0 bg-slate-900/40"
-        onClick={onClose}
-      />
+    <Modal
+      onClose={onClose}
+      labelledBy={titleId}
+      className="w-full max-w-md bg-white dark:bg-slate-950"
+    >
       <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
         onSubmit={submit}
         className="relative z-10 w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-950"
       >
@@ -146,7 +134,11 @@ export default function AddCourseModal({
             className={fieldClass}
           />
         </label>
-        {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+        {error ? (
+          <p role="alert" className="mt-3 text-sm text-red-600">
+            {error}
+          </p>
+        ) : null}
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
@@ -163,6 +155,6 @@ export default function AddCourseModal({
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }

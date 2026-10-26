@@ -193,7 +193,6 @@ export function createCalendarExport(
       });
       if (valid(turn)) {
         void retryImage();
-        await deliver("download");
       }
     } catch {
       if (valid(turn))

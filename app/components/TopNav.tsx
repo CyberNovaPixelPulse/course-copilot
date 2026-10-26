@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useEntitlements, EntitlementStatus } from "./EntitlementDisplay";
 import Link from "next/link";
+import { Menu } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { LOCALES, useI18n, type Dictionary, type Locale } from "@/lib/i18n";
 
@@ -208,7 +209,7 @@ function MenuButton({
       onClick={onClick}
       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl text-stone-800 hover:bg-stone-100"
     >
-      ☰
+      <Menu size={20} strokeWidth={1.6} aria-hidden="true" />
     </button>
   );
 }
@@ -267,7 +268,6 @@ export default function TopNav() {
         title={creditLabel}
         className="inline-flex h-9 max-w-full shrink-0 items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
       >
-        <span aria-hidden>⚡</span>
         {compact ? (
           <span>{credits.count}</span>
         ) : (
@@ -280,17 +280,14 @@ export default function TopNav() {
 
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-50 overflow-x-hidden border-b border-stone-200/80 bg-white/90 backdrop-blur-md md:overflow-visible">
+      <header className="app-header fixed inset-x-0 top-0 z-50">
         <div className="flex items-center gap-2 overflow-x-hidden px-3 py-2.5 md:hidden">
           <Link
             href="/"
             className="flex min-w-0 flex-1 items-center gap-1.5 text-stone-900"
           >
-            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-xs font-semibold text-white">
-              CC
-            </span>
             <span className="truncate text-sm font-semibold tracking-tight">
-              {t.nav.appName}
+              Course Copilot
             </span>
           </Link>
           {renderCreditControl(true)}
@@ -301,26 +298,14 @@ export default function TopNav() {
           />
         </div>
 
-        <div className="hidden h-16 grid-cols-[1fr_auto_1fr] items-center gap-2 px-6 md:grid">
-          <div className="flex items-center justify-self-start">
-            <MenuButton
-              label={menuOpen ? t.nav.closeMenu : t.nav.openMenu}
-              expanded={menuOpen}
-              onClick={() => setMenuOpen((open) => !open)}
-            />
-          </div>
-
-          <Link
-            href="/"
-            className="justify-self-center text-center text-base font-semibold tracking-tight text-stone-900"
-          >
-            <span className="mr-1.5 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 align-middle text-xs text-white">
-              CC
-            </span>
-            <span className="align-middle">{t.nav.appName}</span>
+        <div className="desktop-nav hidden md:flex">
+          <Link href="/" className="workspace-brand">
+            Course Copilot<span>{t.nav.appName}</span>
           </Link>
-
           <div className="flex min-w-0 items-center justify-end gap-3 justify-self-end">
+            <Link className="nav-help" href="/#how-it-works">
+              {t.nav.howItWorks}
+            </Link>
             <LanguageMenu
               label={t.nav.language}
               locale={locale}
@@ -358,6 +343,11 @@ export default function TopNav() {
                 {t.nav.signIn}
               </button>
             )}
+            <MenuButton
+              label={menuOpen ? t.nav.closeMenu : t.nav.openMenu}
+              expanded={menuOpen}
+              onClick={() => setMenuOpen((open) => !open)}
+            />
           </div>
         </div>
       </header>

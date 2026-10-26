@@ -1,0 +1,529 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T17:46:40.554738+00:00",
+  "title": "Design System: Course Copilot",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Primary",
+        "tonalRamp": [
+          "oklch(15% 0.0277 168.6)",
+          "oklch(27% 0.0388 168.6)",
+          "oklch(39% 0.0498 168.6)",
+          "oklch(51% 0.0609 168.6)",
+          "oklch(63% 0.0572 168.6)",
+          "oklch(75% 0.0462 168.6)",
+          "oklch(87% 0.0351 168.6)",
+          "oklch(95% 0.0277 168.6)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Primary Hover",
+        "tonalRamp": [
+          "oklch(15% 0.0252 165.5)",
+          "oklch(27% 0.0352 165.5)",
+          "oklch(39% 0.0453 165.5)",
+          "oklch(51% 0.0554 165.5)",
+          "oklch(63% 0.052 165.5)",
+          "oklch(75% 0.0419 165.5)",
+          "oklch(87% 0.0319 165.5)",
+          "oklch(95% 0.0252 165.5)"
+        ]
+      },
+      "primary-soft": {
+        "role": "primary",
+        "displayName": "Primary Soft",
+        "tonalRamp": [
+          "oklch(15% 0.0117 146.7)",
+          "oklch(27% 0.0164 146.7)",
+          "oklch(39% 0.021 146.7)",
+          "oklch(51% 0.0257 146.7)",
+          "oklch(63% 0.0242 146.7)",
+          "oklch(75% 0.0195 146.7)",
+          "oklch(87% 0.0148 146.7)",
+          "oklch(95% 0.0117 146.7)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Background",
+        "tonalRamp": [
+          "oklch(15% 0.0071 195.0)",
+          "oklch(27% 0.01 195.0)",
+          "oklch(39% 0.0129 195.0)",
+          "oklch(51% 0.0157 195.0)",
+          "oklch(63% 0.0148 195.0)",
+          "oklch(75% 0.0119 195.0)",
+          "oklch(87% 0.009 195.0)",
+          "oklch(95% 0.0071 195.0)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Foreground",
+        "tonalRamp": [
+          "oklch(15% 0.0099 197.1)",
+          "oklch(27% 0.0138 197.1)",
+          "oklch(39% 0.0178 197.1)",
+          "oklch(51% 0.0218 197.1)",
+          "oklch(63% 0.0204 197.1)",
+          "oklch(75% 0.0165 197.1)",
+          "oklch(87% 0.0125 197.1)",
+          "oklch(95% 0.0099 197.1)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(15% 0.0 0.0)",
+          "oklch(27% 0.0 0.0)",
+          "oklch(39% 0.0 0.0)",
+          "oklch(51% 0.0 0.0)",
+          "oklch(63% 0.0 0.0)",
+          "oklch(75% 0.0 0.0)",
+          "oklch(87% 0.0 0.0)",
+          "oklch(95% 0.0 0.0)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "tonalRamp": [
+          "oklch(15% 0.0051 185.5)",
+          "oklch(27% 0.0071 185.5)",
+          "oklch(39% 0.0091 185.5)",
+          "oklch(51% 0.0112 185.5)",
+          "oklch(63% 0.0105 185.5)",
+          "oklch(75% 0.0084 185.5)",
+          "oklch(87% 0.0064 185.5)",
+          "oklch(95% 0.0051 185.5)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "tonalRamp": [
+          "oklch(15% 0.0059 196.2)",
+          "oklch(27% 0.0082 196.2)",
+          "oklch(39% 0.0106 196.2)",
+          "oklch(51% 0.0129 196.2)",
+          "oklch(63% 0.0121 196.2)",
+          "oklch(75% 0.0098 196.2)",
+          "oklch(87% 0.0074 196.2)",
+          "oklch(95% 0.0059 196.2)"
+        ]
+      },
+      "field-line": {
+        "role": "neutral",
+        "displayName": "Field Line",
+        "tonalRamp": [
+          "oklch(15% 0.0115 212.7)",
+          "oklch(27% 0.0161 212.7)",
+          "oklch(39% 0.0207 212.7)",
+          "oklch(51% 0.0253 212.7)",
+          "oklch(63% 0.0238 212.7)",
+          "oklch(75% 0.0192 212.7)",
+          "oklch(87% 0.0146 212.7)",
+          "oklch(95% 0.0115 212.7)"
+        ]
+      },
+      "field-text": {
+        "role": "neutral",
+        "displayName": "Field Text",
+        "tonalRamp": [
+          "oklch(15% 0.014 217.2)",
+          "oklch(27% 0.0196 217.2)",
+          "oklch(39% 0.0251 217.2)",
+          "oklch(51% 0.0307 217.2)",
+          "oklch(63% 0.0289 217.2)",
+          "oklch(75% 0.0233 217.2)",
+          "oklch(87% 0.0177 217.2)",
+          "oklch(95% 0.014 217.2)"
+        ]
+      },
+      "field-focus": {
+        "role": "secondary",
+        "displayName": "Field Focus",
+        "tonalRamp": [
+          "oklch(15% 0.0138 160.0)",
+          "oklch(27% 0.0193 160.0)",
+          "oklch(39% 0.0248 160.0)",
+          "oklch(51% 0.0303 160.0)",
+          "oklch(63% 0.0284 160.0)",
+          "oklch(75% 0.0229 160.0)",
+          "oklch(87% 0.0174 160.0)",
+          "oklch(95% 0.0138 160.0)"
+        ]
+      },
+      "course-border": {
+        "role": "secondary",
+        "displayName": "Course Border",
+        "tonalRamp": [
+          "oklch(15% 0.0074 157.1)",
+          "oklch(27% 0.0104 157.1)",
+          "oklch(39% 0.0134 157.1)",
+          "oklch(51% 0.0164 157.1)",
+          "oklch(63% 0.0154 157.1)",
+          "oklch(75% 0.0124 157.1)",
+          "oklch(87% 0.0094 157.1)",
+          "oklch(95% 0.0074 157.1)"
+        ]
+      },
+      "course-sage": {
+        "role": "secondary",
+        "displayName": "Course Sage",
+        "tonalRamp": [
+          "oklch(15% 0.0117 144.0)",
+          "oklch(27% 0.0164 144.0)",
+          "oklch(39% 0.021 144.0)",
+          "oklch(51% 0.0257 144.0)",
+          "oklch(63% 0.0242 144.0)",
+          "oklch(75% 0.0195 144.0)",
+          "oklch(87% 0.0148 144.0)",
+          "oklch(95% 0.0117 144.0)"
+        ]
+      },
+      "course-sage-text": {
+        "role": "secondary",
+        "displayName": "Course Sage Text",
+        "tonalRamp": [
+          "oklch(15% 0.0119 157.8)",
+          "oklch(27% 0.0167 157.8)",
+          "oklch(39% 0.0215 157.8)",
+          "oklch(51% 0.0262 157.8)",
+          "oklch(63% 0.0247 157.8)",
+          "oklch(75% 0.0199 157.8)",
+          "oklch(87% 0.0151 157.8)",
+          "oklch(95% 0.0119 157.8)"
+        ]
+      },
+      "course-rose": {
+        "role": "secondary",
+        "displayName": "Course Rose",
+        "tonalRamp": [
+          "oklch(15% 0.0069 315.0)",
+          "oklch(27% 0.0096 315.0)",
+          "oklch(39% 0.0123 315.0)",
+          "oklch(51% 0.0151 315.0)",
+          "oklch(63% 0.0142 315.0)",
+          "oklch(75% 0.0114 315.0)",
+          "oklch(87% 0.0087 315.0)",
+          "oklch(95% 0.0069 315.0)"
+        ]
+      },
+      "course-rose-text": {
+        "role": "secondary",
+        "displayName": "Course Rose Text",
+        "tonalRamp": [
+          "oklch(15% 0.0089 326.9)",
+          "oklch(27% 0.0125 326.9)",
+          "oklch(39% 0.0161 326.9)",
+          "oklch(51% 0.0197 326.9)",
+          "oklch(63% 0.0185 326.9)",
+          "oklch(75% 0.0149 326.9)",
+          "oklch(87% 0.0113 326.9)",
+          "oklch(95% 0.0089 326.9)"
+        ]
+      },
+      "course-sand": {
+        "role": "secondary",
+        "displayName": "Course Sand",
+        "tonalRamp": [
+          "oklch(15% 0.0211 41.4)",
+          "oklch(27% 0.0295 41.4)",
+          "oklch(39% 0.0379 41.4)",
+          "oklch(51% 0.0463 41.4)",
+          "oklch(63% 0.0435 41.4)",
+          "oklch(75% 0.0351 41.4)",
+          "oklch(87% 0.0267 41.4)",
+          "oklch(95% 0.0211 41.4)"
+        ]
+      },
+      "course-sand-text": {
+        "role": "secondary",
+        "displayName": "Course Sand Text",
+        "tonalRamp": [
+          "oklch(15% 0.0159 39.6)",
+          "oklch(27% 0.0222 39.6)",
+          "oklch(39% 0.0285 39.6)",
+          "oklch(51% 0.0349 39.6)",
+          "oklch(63% 0.0328 39.6)",
+          "oklch(75% 0.0264 39.6)",
+          "oklch(87% 0.0201 39.6)",
+          "oklch(95% 0.0159 39.6)"
+        ]
+      },
+      "course-leaf": {
+        "role": "secondary",
+        "displayName": "Course Leaf",
+        "tonalRamp": [
+          "oklch(15% 0.0089 136.4)",
+          "oklch(27% 0.0125 136.4)",
+          "oklch(39% 0.016 136.4)",
+          "oklch(51% 0.0196 136.4)",
+          "oklch(63% 0.0184 136.4)",
+          "oklch(75% 0.0148 136.4)",
+          "oklch(87% 0.0113 136.4)",
+          "oklch(95% 0.0089 136.4)"
+        ]
+      },
+      "course-leaf-text": {
+        "role": "secondary",
+        "displayName": "Course Leaf Text",
+        "tonalRamp": [
+          "oklch(15% 0.0103 143.6)",
+          "oklch(27% 0.0145 143.6)",
+          "oklch(39% 0.0186 143.6)",
+          "oklch(51% 0.0228 143.6)",
+          "oklch(63% 0.0214 143.6)",
+          "oklch(75% 0.0172 143.6)",
+          "oklch(87% 0.0131 143.6)",
+          "oklch(95% 0.0103 143.6)"
+        ]
+      },
+      "course-blue": {
+        "role": "secondary",
+        "displayName": "Course Blue",
+        "tonalRamp": [
+          "oklch(15% 0.0166 205.3)",
+          "oklch(27% 0.0233 205.3)",
+          "oklch(39% 0.0299 205.3)",
+          "oklch(51% 0.0366 205.3)",
+          "oklch(63% 0.0343 205.3)",
+          "oklch(75% 0.0277 205.3)",
+          "oklch(87% 0.021 205.3)",
+          "oklch(95% 0.0166 205.3)"
+        ]
+      },
+      "course-blue-text": {
+        "role": "secondary",
+        "displayName": "Course Blue Text",
+        "tonalRamp": [
+          "oklch(15% 0.0162 205.2)",
+          "oklch(27% 0.0227 205.2)",
+          "oklch(39% 0.0292 205.2)",
+          "oklch(51% 0.0357 205.2)",
+          "oklch(63% 0.0335 205.2)",
+          "oklch(75% 0.0271 205.2)",
+          "oklch(87% 0.0206 205.2)",
+          "oklch(95% 0.0162 205.2)"
+        ]
+      },
+      "course-lavender": {
+        "role": "secondary",
+        "displayName": "Course Lavender",
+        "tonalRamp": [
+          "oklch(15% 0.0117 255.0)",
+          "oklch(27% 0.0164 255.0)",
+          "oklch(39% 0.021 255.0)",
+          "oklch(51% 0.0257 255.0)",
+          "oklch(63% 0.0242 255.0)",
+          "oklch(75% 0.0195 255.0)",
+          "oklch(87% 0.0148 255.0)",
+          "oklch(95% 0.0117 255.0)"
+        ]
+      },
+      "course-lavender-text": {
+        "role": "secondary",
+        "displayName": "Course Lavender Text",
+        "tonalRamp": [
+          "oklch(15% 0.0104 255.8)",
+          "oklch(27% 0.0146 255.8)",
+          "oklch(39% 0.0188 255.8)",
+          "oklch(51% 0.023 255.8)",
+          "oklch(63% 0.0216 255.8)",
+          "oklch(75% 0.0174 255.8)",
+          "oklch(87% 0.0132 255.8)",
+          "oklch(95% 0.0104 255.8)"
+        ]
+      },
+      "course-sea": {
+        "role": "secondary",
+        "displayName": "Course Sea",
+        "tonalRamp": [
+          "oklch(15% 0.0109 172.0)",
+          "oklch(27% 0.0153 172.0)",
+          "oklch(39% 0.0196 172.0)",
+          "oklch(51% 0.024 172.0)",
+          "oklch(63% 0.0225 172.0)",
+          "oklch(75% 0.0182 172.0)",
+          "oklch(87% 0.0138 172.0)",
+          "oklch(95% 0.0109 172.0)"
+        ]
+      },
+      "course-sea-text": {
+        "role": "secondary",
+        "displayName": "Course Sea Text",
+        "tonalRamp": [
+          "oklch(15% 0.0109 172.0)",
+          "oklch(27% 0.0153 172.0)",
+          "oklch(39% 0.0196 172.0)",
+          "oklch(51% 0.024 172.0)",
+          "oklch(63% 0.0225 172.0)",
+          "oklch(75% 0.0182 172.0)",
+          "oklch(87% 0.0138 172.0)",
+          "oklch(95% 0.0109 172.0)"
+        ]
+      },
+      "course-peach": {
+        "role": "secondary",
+        "displayName": "Course Peach",
+        "tonalRamp": [
+          "oklch(15% 0.0203 26.7)",
+          "oklch(27% 0.0284 26.7)",
+          "oklch(39% 0.0365 26.7)",
+          "oklch(51% 0.0447 26.7)",
+          "oklch(63% 0.042 26.7)",
+          "oklch(75% 0.0338 26.7)",
+          "oklch(87% 0.0257 26.7)",
+          "oklch(95% 0.0203 26.7)"
+        ]
+      },
+      "course-peach-text": {
+        "role": "secondary",
+        "displayName": "Course Peach Text",
+        "tonalRamp": [
+          "oklch(15% 0.0153 24.5)",
+          "oklch(27% 0.0215 24.5)",
+          "oklch(39% 0.0276 24.5)",
+          "oklch(51% 0.0337 24.5)",
+          "oklch(63% 0.0317 24.5)",
+          "oklch(75% 0.0255 24.5)",
+          "oklch(87% 0.0194 24.5)",
+          "oklch(95% 0.0153 24.5)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Compact page heading",
+        "purpose": "Workspace introduction."
+      },
+      "title": {
+        "displayName": "Panel title",
+        "purpose": "Source and result section headings."
+      }
+    },
+    "shadows": [
+      {
+        "name": "secondary-action",
+        "value": "0 1px 2px 0 rgb(0 0 0 / .05)",
+        "purpose": "Existing add-course secondary control only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "reduced-motion",
+        "value": "0.01ms",
+        "purpose": "Animation and transition duration under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-workbench-max",
+        "value": "639px"
+      },
+      {
+        "name": "desktop-navigation-min",
+        "value": "768px"
+      },
+      {
+        "name": "stacked-workbench-max",
+        "value": "1023px"
+      },
+      {
+        "name": "compact-brand-max",
+        "value": "1100px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Teal workspace action.",
+      "html": "<button class=\"ds-primary\">新增課程</button>",
+      "css": ".ds-primary{background:var(--accent, #176b5b);color:var(--surface,#fff);border:0;border-radius:6px;padding:8px 16px;font:500 14px var(--font-sans,sans-serif);cursor:pointer}.ds-primary:hover{background:#207b65}.ds-primary:focus-visible{outline:2px solid var(--accent, #176b5b);outline-offset:3px}.ds-primary:disabled{opacity:.6;cursor:not-allowed}"
+    },
+    {
+      "name": "Secondary action",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "White bordered companion action.",
+      "html": "<button class=\"ds-secondary\">新增課程</button>",
+      "css": ".ds-secondary{background:var(--surface,#fff);color:#334155;border:1px solid #cbd5e1;border-radius:6px;padding:8px 16px;font:500 14px var(--font-sans,sans-serif);box-shadow:0 1px 2px 0 rgb(0 0 0 / .05)}.ds-secondary:hover{background:#f8fafc}.ds-secondary:focus-visible{outline:2px solid var(--accent, #176b5b);outline-offset:3px}"
+    },
+    {
+      "name": "Course field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Existing labeled add-course field.",
+      "html": "<label class=\"ds-label\">課程名稱<input class=\"ds-field\" value=\"微積分\"></label>",
+      "css": ".ds-label{display:block;font:500 14px var(--font-sans,sans-serif);color:#334155}.ds-field{display:block;margin-top:4px;background:var(--surface,#fff);border:1px solid #cbd5e1;border-radius:12px;padding:8px 12px;color:#1e293b;font:14px var(--font-sans,sans-serif)}.ds-field:focus{border-color:#498e77}.ds-field:focus-visible{outline:2px solid var(--accent, #176b5b);outline-offset:3px}"
+    },
+    {
+      "name": "Work surface",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "White source/result surface.",
+      "html": "<section class=\"ds-panel\"><h2>來源課表</h2><p>上傳截圖，核對課程與時間。</p></section>",
+      "css": ".ds-panel{background:var(--surface,#fff);color:var(--foreground,#233238);border-radius:8px;padding:20px;font-family:var(--font-sans,sans-serif)}.ds-panel h2{margin:0;font-size:19px;font-weight:650}.ds-panel p{color:var(--muted,#52656c);font-size:14px;line-height:1.8}"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "refersTo": "panel",
+      "description": "Compact white navigation surface.",
+      "html": "<nav class=\"ds-nav\"><span>Course Copilot</span><a href=\"#upload\">使用方式</a></nav>",
+      "css": ".ds-nav{display:flex;align-items:center;justify-content:space-between;gap:24px;background:var(--surface,#fff);color:var(--foreground,#233238);border-bottom:1px solid #dce3e5;padding:16px 24px}.ds-nav span{font:650 25px var(--font-geist-sans,sans-serif);letter-spacing:-.035em}.ds-nav a{color:inherit;font:13px var(--font-sans,sans-serif)}.ds-nav a:hover{color:var(--accent, #176b5b)}.ds-nav a:focus-visible{outline:2px solid var(--accent, #176b5b);outline-offset:3px}"
+    },
+    {
+      "name": "Calendar event",
+      "kind": "custom",
+      "refersTo": "course",
+      "description": "One actual categorical course color pair.",
+      "html": "<button class=\"ds-course\"><strong>微積分</strong><span>09:00–12:00</span><span>綜二 302</span></button>",
+      "css": ".ds-course{display:flex;flex-direction:column;text-align:left;justify-content:center;min-height:144px;background:#DCEBE2;color:#233E34;border:1px solid #b8cdc5;border-radius:3px;padding:4px 8px;font:12px var(--font-sans,sans-serif);box-shadow:none}.ds-course strong{font-size:14px;line-height:20px}.ds-course span{font-variant-numeric:tabular-nums}.ds-course:hover{cursor:grab}.ds-course:focus-visible{outline:2px solid var(--accent, #176b5b);outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "課表整理工作台",
+    "overview": "A calm, practical workspace makes the source image and the weekly timetable easy to inspect. Course names, exact times, classrooms, and functional grid lines supply the visual character. The approved Operate direction uses white work surfaces on cool gray, restrained teal actions, and small functional corners.\n\nThe interface supports checking and correcting information. Keep real state, preview state, eligibility, and recovery choices legible. No marketing hero, decorative illustration, or unnecessary animation belongs in this workbench.",
+    "keyCharacteristics": [
+      "Source and result remain easy to compare.",
+      "Quiet surfaces and subdued course colors support reading.",
+      "Functional controls, visible focus, and precise time alignment."
+    ],
+    "rules": [
+      {
+        "name": "The Quiet Surface Rule",
+        "body": "Use neutral work surfaces and reserve teal for functional emphasis.",
+        "section": "colors"
+      },
+      {
+        "name": "The Working Hierarchy Rule",
+        "body": "Keep the timetable and its controls visually ahead of supporting instructions and footer details.",
+        "section": "typography"
+      },
+      {
+        "name": "The Working Surface Rule",
+        "body": "Use tonal separation and functional lines for the workbench's structure.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep source and result readable together on desktop and stacked in order on smaller screens.",
+      "Do use paired subdued course backgrounds and deep text with tabular time labels.",
+      "Do preserve real data, explicit sample labeling, keyboard focus, and account-state behavior."
+    ],
+    "donts": [
+      "Don't add a marketing hero, decorative illustrations, or unnecessary animation to the workbench.",
+      "Don't use course colors as validation or payment status semantics.",
+      "Don't replace precise time and classroom information with decorative summaries."
+    ]
+  }
+}

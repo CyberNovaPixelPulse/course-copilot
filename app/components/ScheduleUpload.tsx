@@ -2,7 +2,7 @@
 
 import { isCourseStructure, inspectSchedule } from "@/lib/course-time";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   formatPlanPrice,
   loadClientRates,
@@ -25,6 +25,7 @@ import ScheduleCropModal from "./ScheduleCropModal";
 import AddCourseModal from "./AddCourseModal";
 import ScheduleDraft from "./ScheduleDraft";
 import Modal from "./Modal";
+import { Lock, Upload } from "lucide-react";
 import type { Course } from "@/lib/types";
 import { useSession, signIn } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
@@ -81,7 +82,7 @@ function ScheduleUploadScreen() {
   const inputRef = useRef<HTMLInputElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
   const scrollToCalendar = useRef(false);
-  const showingSample = useRef(false);
+  const [showingSample, setShowingSample] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<PreviewFile[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -124,9 +125,16 @@ function ScheduleUploadScreen() {
   }, [courses]);
 
   useEffect(() => {
-    if (!showingSample.current) return;
-    setCourses((current) => localizeSampleCourses(current, locale));
-  }, [locale]);
+    if (!showingSample) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (active)
+        setCourses((current) => localizeSampleCourses(current, locale));
+    });
+    return () => {
+      active = false;
+    };
+  }, [locale, showingSample]);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,11 +147,11 @@ function ScheduleUploadScreen() {
   }, []);
 
   function loadSampleSchedule() {
-    if (!showingSample.current && courses.length)
+    if (!showingSample && courses.length)
       setSampleBackup(structuredClone(courses));
     setError(null);
     scrollToCalendar.current = true;
-    showingSample.current = true;
+    setShowingSample(true);
     setCourses(getSampleCourses(locale));
   }
 
@@ -342,317 +350,338 @@ function ScheduleUploadScreen() {
       setError("課表結構無法辨認，無法載入");
       return;
     }
-    showingSample.current = false;
+    setShowingSample(false);
     setCourses(inspectSchedule(restored).courses);
     setCalendarKey((current) => current + 1);
   }
 
+  const demoCourses = useMemo(() => getSampleCourses(locale), [locale]);
   const priceLabel = formatPlanPrice(locale, rates, currencyOverride);
   const withPrice = (text: string) => text.replaceAll("NT$9", priceLabel);
 
   return (
     <section
       id="upload"
-      className="mx-auto w-full max-w-6xl scroll-mt-24"
-      aria-labelledby="upload-heading"
+      className="workbench"
+      aria-label={
+        locale.startsWith("zh") ? "課表整理工作台" : "Timetable workspace"
+      }
     >
-      <EntitlementStatus />
-      {usage ? (
-        <p aria-label="帳號權益摘要" className="mb-3 text-sm text-stone-600">
-          {locale.startsWith("zh")
-            ? `免費 ${usage.freeRemaining} 次 · 購買／兌換 ${usage.creditRemaining} 次 · 共 ${usage.totalRemaining} 次 · ${usage.canExport ? "可匯出行事曆" : "尚無匯出資格"}`
-            : `Free ${usage.freeRemaining} · Purchased/redeemed ${usage.creditRemaining} · Total ${usage.totalRemaining} · ${usage.canExport ? "Calendar export unlocked" : "Calendar export locked"}`}
-        </p>
-      ) : null}
-      <>
-        {checkout.state.problem === "save" ? (
-          <div className="flex gap-4 text-sm">
-            <button
-              type="button"
-              className="underline"
-              onClick={() => void startCheckout(lastCheckoutProvider.current)}
+      <aside
+        className="source-panel"
+        aria-label={locale.startsWith("zh") ? "來源課表" : "Source timetable"}
+      >
+        <div className="source-panel-heading">
+          <h2>{locale.startsWith("zh") ? "來源課表" : "Source timetable"}</h2>
+          <span>PNG / JPG / WEBP</span>
+        </div>
+        <div
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={onDrop}
+          className={`source-dropzone relative ${
+            isDragging
+              ? "border-indigo-500 bg-indigo-50"
+              : "border-stone-300 hover:border-indigo-400"
+          }`}
+        >
+          {isParsing ? (
+            <div
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-3xl bg-white/85 backdrop-blur-[1px]"
+              role="status"
+              aria-live="polite"
             >
-              {locale.startsWith("zh")
-                ? "重試保存並付款"
-                : "Retry saving and checkout"}
-            </button>
-            <button
-              type="button"
-              className="underline"
-              onClick={() => void continueWithoutDraft()}
+              <span className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-100 border-t-indigo-600" />
+              <p className="mt-4 text-sm font-medium text-stone-800">
+                {t.upload.parsing}
+              </p>
+              <p className="mt-1 text-sm text-stone-500">
+                {t.upload.parsingHint}
+              </p>
+            </div>
+          ) : null}
+
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*,image/png,image/jpeg,image/webp"
+            multiple
+            className="sr-only"
+            disabled={isParsing}
+            onChange={(event) => {
+              if (event.target.files) addFiles(event.target.files);
+              event.target.value = "";
+            }}
+          />
+
+          <button
+            type="button"
+            disabled={isParsing}
+            onClick={() => inputRef.current?.click()}
+            className="source-upload-button"
+          >
+            <Upload size={25} strokeWidth={1.5} aria-hidden="true" />
+            <span
+              id="upload-heading"
+              className="text-lg font-semibold text-stone-900"
             >
-              {locale.startsWith("zh")
-                ? "不保存課表，繼續付款"
-                : "Continue without saving"}
-            </button>
-          </div>
-        ) : null}
-        <CheckoutRecovery
-          checkout={checkout}
+              {t.upload.heading}
+            </span>
+            <span className="max-w-md text-sm leading-6 text-stone-500">
+              {t.upload.hint}
+            </span>
+            <span className="mt-2 inline-flex rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white">
+              {t.upload.chooseFiles}
+            </span>
+          </button>
+
+          {error ? (
+            <p className="mt-2 text-center text-sm text-red-600" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          {files.length > 0 ? (
+            <ul className="source-files">
+              {files.map((file) => (
+                <li key={file.id} className="source-file">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={file.previewUrl}
+                    alt={t.upload.previewAlt(file.file.name)}
+                    className="source-file-image"
+                  />
+                  <div className="flex items-start justify-between gap-3 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-stone-800">
+                        {file.file.name}
+                      </p>
+                      <p className="text-xs text-stone-500">
+                        {formatBytes(file.file.size)}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+
+        <div className="sample-action">
+          <button
+            type="button"
+            onClick={loadSampleSchedule}
+            className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+          >
+            {t.upload.sampleDataPrompt ??
+              "No schedule? Click here to try with sample data"}
+          </button>
+        </div>
+
+        <RecognitionBatch
+          batch={batch}
           courses={courses}
           locale={locale}
-          onRestore={restoreSchedule}
-        />
-        {signedIn && (
-          <AccountActivity
-            key={session?.user?.id || session?.user?.email}
-            restore={restoreSchedule}
-          />
-        )}
-      </>
-      {status === "unauthenticated" ? (
-        <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4 sm:px-5">
-          <p className="text-sm font-semibold leading-6 text-indigo-950">
-            <span aria-hidden>✨ </span>
-            {t.upload.freeScanCta ??
-              "Sign in with Google to get 3 free AI schedule scans"}
-          </p>
-          <button
-            type="button"
-            onClick={() => void signIn("google", { callbackUrl: "/#upload" })}
-            className="mt-3 rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
-          >
-            {t.nav.signIn}
-          </button>
-        </div>
-      ) : null}
-
-      <p className="my-3 text-sm text-stone-500">
-        {locale.startsWith("zh")
-          ? "圖片與整批進度僅保留在此頁。重整後需重新選圖；已成功的單張結果可從最近辨識取回（7 天內）。"
-          : "Images and batch progress stay in this page only. Reselect after reload; successful jobs remain in recent recognition for seven days."}
-      </p>
-      <RecognitionBatch
-        batch={batch}
-        courses={courses}
-        locale={locale}
-        onLoad={restoreSchedule}
-        onEnd={() => {
-          setCropQueue([]);
-          setFiles([]);
-          setError(null);
-          previews.current.forEach((url) => URL.revokeObjectURL(url));
-          previews.current = [];
-        }}
-      />
-      <div
-        onDragOver={(event) => {
-          event.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={onDrop}
-        className={`relative rounded-3xl border-2 border-dashed bg-white p-6 shadow-sm transition sm:p-8 ${
-          isDragging
-            ? "border-indigo-500 bg-indigo-50"
-            : "border-stone-300 hover:border-indigo-400"
-        }`}
-      >
-        {isParsing ? (
-          <div
-            className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-3xl bg-white/85 backdrop-blur-[1px]"
-            role="status"
-            aria-live="polite"
-          >
-            <span className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-100 border-t-indigo-600" />
-            <p className="mt-4 text-sm font-medium text-stone-800">
-              {t.upload.parsing}
-            </p>
-            <p className="mt-1 text-sm text-stone-500">
-              {t.upload.parsingHint}
-            </p>
-          </div>
-        ) : null}
-
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*,image/png,image/jpeg,image/webp"
-          multiple
-          className="sr-only"
-          disabled={isParsing}
-          onChange={(event) => {
-            if (event.target.files) addFiles(event.target.files);
-            event.target.value = "";
+          onLoad={restoreSchedule}
+          onEnd={() => {
+            setCropQueue([]);
+            setFiles([]);
+            setError(null);
+            previews.current.forEach((url) => URL.revokeObjectURL(url));
+            previews.current = [];
           }}
         />
-
-        <button
-          type="button"
-          disabled={isParsing}
-          onClick={() => inputRef.current?.click()}
-          className="flex w-full flex-col items-center gap-3 rounded-2xl px-4 py-10 text-center disabled:opacity-60"
-        >
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-2xl">
-            📅
-          </span>
-          <span
-            id="upload-heading"
-            className="text-lg font-semibold text-stone-900"
-          >
-            {t.upload.heading}
-          </span>
-          <span className="max-w-md text-sm leading-6 text-stone-500">
-            {t.upload.hint}
-          </span>
-          <span className="mt-2 inline-flex rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white">
-            {t.upload.chooseFiles}
-          </span>
-        </button>
-
-        {error ? (
-          <p className="mt-2 text-center text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        {files.length > 0 ? (
-          <ul className="mt-6 grid gap-4 sm:grid-cols-2">
-            {files.map((file) => (
-              <li
-                key={file.id}
-                className="overflow-hidden rounded-2xl border border-stone-200 bg-stone-50"
+        <div className="source-account">
+          {status === "unauthenticated" ? (
+            <div className="source-signin">
+              <p className="text-sm font-semibold leading-6 text-indigo-950">
+                {t.upload.freeScanCta ??
+                  "Sign in with Google to get 3 free AI schedule scans"}
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  void signIn("google", { callbackUrl: "/#upload" })
+                }
+                className="mt-3 rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={file.previewUrl}
-                  alt={t.upload.previewAlt(file.file.name)}
-                  className="h-40 w-full object-cover"
-                />
-                <div className="flex items-start justify-between gap-3 p-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-stone-800">
-                      {file.file.name}
-                    </p>
-                    <p className="text-xs text-stone-500">
-                      {formatBytes(file.file.size)}
-                    </p>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
+                {t.nav.signIn}
+              </button>
+            </div>
+          ) : null}
 
-      <div className="mt-4 flex justify-center">
-        <button
-          type="button"
-          onClick={loadSampleSchedule}
-          className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
-        >
-          {t.upload.sampleDataPrompt ??
-            "No schedule? Click here to try with sample data"}
-        </button>
-      </div>
-
-      {sampleBackup ? (
-        <div role="status" className="my-3 text-sm">
-          {locale.startsWith("zh")
-            ? "已載入範例；原課表仍可復原。"
-            : "Sample loaded. Your previous schedule can be restored."}
-          <button
-            type="button"
-            className="ml-3 min-h-11 underline"
-            onClick={() => {
-              showingSample.current = false;
-              setCourses(sampleBackup);
-              setSampleBackup(null);
-            }}
-          >
-            {locale.startsWith("zh")
-              ? "復原範例替換"
-              : "Undo sample replacement"}
-          </button>
-        </div>
-      ) : null}
-      <ScheduleDraft
-        accountId={accountId}
-        courses={showingSample.current && sampleBackup ? sampleBackup : courses}
-        onRestore={restoreSchedule}
-        zh={locale.startsWith("zh")}
-      />
-      <CalendarExportStatus flow={calendarExport.flow} courses={courses} />
-      {courses.length === 0 ? (
-        <button
-          type="button"
-          className="mt-4 rounded-full border px-4 py-2"
-          data-modal-return
-          onClick={() => setAddCourseOpen(true)}
-        >
-          {t.upload.addCourse ?? "+ Add course"}
-        </button>
-      ) : null}
-      {courses.length > 0 ? (
-        <div
-          ref={calendarRef}
-          className="mt-8 scroll-mt-24 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm"
-        >
-          <div className="flex flex-col gap-3 border-b border-stone-200 px-5 py-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-lg font-semibold text-stone-900">
-                {t.upload.weeklyTitle}
-              </h2>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+          <EntitlementStatus />
+          {usage ? (
+            <p
+              aria-label="帳號權益摘要"
+              className="mb-3 text-sm text-stone-600"
+            >
+              {locale.startsWith("zh")
+                ? `免費 ${usage.freeRemaining} 次 · 購買／兌換 ${usage.creditRemaining} 次 · 共 ${usage.totalRemaining} 次 · ${usage.canExport ? "可匯出行事曆" : "尚無匯出資格"}`
+                : `Free ${usage.freeRemaining} · Purchased/redeemed ${usage.creditRemaining} · Total ${usage.totalRemaining} · ${usage.canExport ? "Calendar export unlocked" : "Calendar export locked"}`}
+            </p>
+          ) : null}
+          <>
+            {checkout.state.problem === "save" ? (
+              <div className="flex gap-4 text-sm">
                 <button
                   type="button"
-                  data-modal-return
-                  onClick={() => setAddCourseOpen(true)}
-                  className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-white dark:text-slate-700 dark:hover:bg-slate-50"
+                  className="underline"
+                  onClick={() =>
+                    void startCheckout(lastCheckoutProvider.current)
+                  }
                 >
-                  {t.upload.addCourse ?? "+ Add course"}
+                  {locale.startsWith("zh")
+                    ? "重試保存並付款"
+                    : "Retry saving and checkout"}
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleDownload()}
-                  className={`inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium ${
-                    usage?.canExport === true
-                      ? "bg-indigo-600 text-white hover:bg-indigo-500"
-                      : "bg-stone-200 text-stone-500"
-                  }`}
+                  className="underline"
+                  onClick={() => void continueWithoutDraft()}
                 >
-                  {usage?.canExport === true ? (
-                    t.upload.download
-                  ) : (
-                    <>
-                      <span aria-hidden>🔒</span>
-                      {entitlement.status === "ready"
-                        ? t.upload.downloadLocked
-                        : locale.startsWith("zh")
-                          ? "確認資格並下載"
-                          : "Verify eligibility and download"}
-                    </>
-                  )}
+                  {locale.startsWith("zh")
+                    ? "不保存課表，繼續付款"
+                    : "Continue without saving"}
                 </button>
               </div>
-            </div>
-            <div role="note">
-              <p className="text-sm text-amber-500">
-                <EmphasizedText text={t.upload.weeklyHint} />
-              </p>
-              <p className="mt-1 text-sm font-semibold text-amber-600">
-                {usage?.canExport
-                  ? withPrice(t.upload.planPaid(usage.totalRemaining))
-                  : withPrice(t.upload.planFree)}
-              </p>
+            ) : null}
+            <CheckoutRecovery
+              checkout={checkout}
+              courses={courses}
+              locale={locale}
+              onRestore={restoreSchedule}
+            />
+            {signedIn && (
+              <AccountActivity
+                key={session?.user?.id || session?.user?.email}
+                restore={restoreSchedule}
+              />
+            )}
+          </>
+          <p className="my-3 text-sm text-stone-500">
+            {locale.startsWith("zh")
+              ? "圖片與整批進度僅保留在此頁。重整後需重新選圖；已成功的單張結果可從最近辨識取回（7 天內）。"
+              : "Images and batch progress stay in this page only. Reselect after reload; successful jobs remain in recent recognition for seven days."}
+          </p>
+        </div>
+      </aside>
+      <div className="result-panel" ref={calendarRef}>
+        <div className="flex flex-col gap-3 border-b border-stone-200 px-5 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-semibold text-stone-900">
+              {t.upload.weeklyTitle}
+            </h2>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                data-modal-return
+                onClick={() => setAddCourseOpen(true)}
+                className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-600 dark:bg-white dark:text-slate-700 dark:hover:bg-slate-50"
+              >
+                {t.upload.addCourse ?? "+ Add course"}
+              </button>
+              <button
+                type="button"
+                disabled={courses.length === 0}
+                onClick={() => void handleDownload()}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium ${
+                  usage?.canExport === true
+                    ? "bg-indigo-600 text-white hover:bg-indigo-500"
+                    : "bg-stone-200 text-stone-500"
+                }`}
+              >
+                {usage?.canExport === true ? (
+                  t.upload.download
+                ) : (
+                  <>
+                    <Lock size={14} strokeWidth={1.5} aria-hidden="true" />
+                    {entitlement.status === "ready"
+                      ? t.upload.downloadLocked
+                      : locale.startsWith("zh")
+                        ? "確認資格並下載"
+                        : "Verify eligibility and download"}
+                  </>
+                )}
+              </button>
             </div>
           </div>
-          <WeeklyCalendar
-            key={calendarKey}
-            courses={courses}
-            onChange={(next) => {
-              showingSample.current = false;
-              setCourses(next);
-            }}
-          />
+          <div role="note">
+            <p className="text-sm text-amber-500">
+              <EmphasizedText
+                text={
+                  courses.length
+                    ? t.upload.weeklyHint
+                    : locale.startsWith("zh")
+                      ? "範例僅供預覽；點選左側載入範例，即可體驗編輯。"
+                      : "This is a read-only preview. Load the sample to try editing."
+                }
+              />
+            </p>
+            <p className="mt-1 text-sm font-semibold text-amber-600">
+              {usage?.canExport
+                ? withPrice(t.upload.planPaid(usage.totalRemaining))
+                : withPrice(t.upload.planFree)}
+            </p>
+          </div>
         </div>
-      ) : null}
-
+        {courses.length === 0 ? (
+          <div className="demo-notice">
+            <span>
+              {locale.startsWith("zh") ? "範例課表" : "Sample timetable"}
+            </span>
+            <p>
+              {locale.startsWith("zh")
+                ? "先看看整理後的樣子。上傳截圖，或新增自己的課程。"
+                : "Preview the result. Upload a screenshot or add your own courses."}
+            </p>
+          </div>
+        ) : null}
+        {sampleBackup ? (
+          <div role="status" className="my-3 text-sm">
+            {locale.startsWith("zh")
+              ? "已載入範例；原課表仍可復原。"
+              : "Sample loaded. Your previous schedule can be restored."}
+            <button
+              type="button"
+              className="ml-3 min-h-11 underline"
+              onClick={() => {
+                setShowingSample(false);
+                setCourses(sampleBackup);
+                setSampleBackup(null);
+              }}
+            >
+              {locale.startsWith("zh")
+                ? "復原範例替換"
+                : "Undo sample replacement"}
+            </button>
+          </div>
+        ) : null}
+        <ScheduleDraft
+          accountId={accountId}
+          courses={showingSample && sampleBackup ? sampleBackup : courses}
+          onRestore={restoreSchedule}
+          zh={locale.startsWith("zh")}
+        />
+        <CalendarExportStatus flow={calendarExport.flow} courses={courses} />
+        <WeeklyCalendar
+          key={calendarKey}
+          courses={courses.length ? courses : demoCourses}
+          readOnly={courses.length === 0}
+          onChange={(next) => {
+            setShowingSample(false);
+            setCourses(next);
+          }}
+        />
+      </div>
       {addCourseOpen ? (
         <AddCourseModal
           onClose={() => setAddCourseOpen(false)}
           onAdd={(course) => {
-            showingSample.current = false;
+            setShowingSample(false);
             setCourses((current) => [...current, course]);
             setAddCourseOpen(false);
           }}

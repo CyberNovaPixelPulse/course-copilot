@@ -24,14 +24,14 @@ import { useI18n } from "@/lib/i18n";
 const MIN_DURATION = 1;
 const HOUR_HEIGHT = 72;
 const PALETTE = [
-  { bg: "#4f46e5", bgSoft: "#eef2ff", text: "#eef2ff" },
-  { bg: "#db2777", bgSoft: "#fdf2f8", text: "#fff1f2" },
-  { bg: "#d97706", bgSoft: "#fffbeb", text: "#fffbeb" },
-  { bg: "#059669", bgSoft: "#ecfdf5", text: "#ecfdf5" },
-  { bg: "#0284c7", bgSoft: "#f0f9ff", text: "#f0f9ff" },
-  { bg: "#7c3aed", bgSoft: "#f5f3ff", text: "#f5f3ff" },
-  { bg: "#0d9488", bgSoft: "#f0fdfa", text: "#f0fdfa" },
-  { bg: "#ea580c", bgSoft: "#fff7ed", text: "#fff7ed" },
+  { bg: "#DCEBE2", bgSoft: "#EAF3EE", text: "#233E34" },
+  { bg: "#EAE2E8", bgSoft: "#F4EFF2", text: "#543747" },
+  { bg: "#F0E7D3", bgSoft: "#F6F1E7", text: "#574728" },
+  { bg: "#DFEAE2", bgSoft: "#EEF4F0", text: "#2C4837" },
+  { bg: "#DDE8F0", bgSoft: "#EEF3F7", text: "#29465B" },
+  { bg: "#E6E3EF", bgSoft: "#F1EFF6", text: "#453B61" },
+  { bg: "#DAE9E7", bgSoft: "#ECF3F2", text: "#2C4A46" },
+  { bg: "#F0E1D5", bgSoft: "#F7F0EA", text: "#5D402C" },
 ];
 
 type CalendarEvent = {
@@ -70,12 +70,14 @@ function colorForName(name: string) {
 
 type WeeklyCalendarProps = {
   courses: Course[];
+  readOnly?: boolean;
   onChange: (next: Course[] | ((current: Course[]) => Course[])) => void;
 };
 
 export default function WeeklyCalendar({
   courses,
   onChange,
+  readOnly = false,
 }: WeeklyCalendarProps) {
   const { t, locale } = useI18n();
   const dragRef = useRef<DragState | null>(null);
@@ -169,6 +171,7 @@ export default function WeeklyCalendar({
   }
 
   function openEdit(courseIndex: number, slotIndex: number) {
+    if (readOnly) return;
     const slot = courses[courseIndex].slots[slotIndex];
     setEditDraft({
       name: courses[courseIndex].name,
@@ -310,7 +313,7 @@ export default function WeeklyCalendar({
           課程時段重疊，請檢查；仍可保留並輸出。
         </p>
       ) : null}
-      <details className="mb-3">
+      <details className="calendar-details mb-3" hidden={readOnly}>
         <summary>課程明細與精確編輯</summary>
         {courses.flatMap((c, ci) =>
           c.slots.map((s, si) =>
@@ -393,9 +396,9 @@ export default function WeeklyCalendar({
           ? "左右滑動查看整週，或點選上方星期。下方週曆也可用上方精確編輯清單操作。"
           : "Swipe sideways or choose a weekday. Use the detailed list above for precise editing."}
       </p>
-      <div ref={scrollRef} className="overflow-x-auto">
+      <div ref={scrollRef} className="calendar-scroll overflow-x-auto">
         <div
-          className="min-w-[720px] pb-4"
+          className="calendar-grid min-w-[720px] pb-4"
           style={{
             display: "grid",
             gridTemplateColumns: `56px repeat(${days.length}, minmax(0, 1fr))`,
@@ -428,7 +431,7 @@ export default function WeeklyCalendar({
           {days.map((day) => (
             <div
               key={`${day}-col`}
-              className="relative border-l border-stone-200 bg-[#fbfaf7]"
+              className="relative border-l border-stone-200 bg-white"
               style={{ height: GRID_HEIGHT }}
             >
               {hours.map((hour) => (
@@ -458,6 +461,7 @@ export default function WeeklyCalendar({
                     key={calendarEvent.key}
                     type="button"
                     data-calendar-event
+                    disabled={readOnly}
                     aria-label={`${calendarEvent.course.name} ${calendarEvent.slot.startTime} to ${calendarEvent.slot.endTime}`}
                     className="absolute touch-none overflow-hidden rounded-xl px-2 py-1 text-left shadow-sm outline-none ring-0 select-none"
                     style={{
@@ -496,15 +500,15 @@ export default function WeeklyCalendar({
                       data-handle="start"
                       className="absolute inset-x-3 top-0 h-2 cursor-ns-resize rounded-full"
                     />
-                    <p className="truncate text-[12px] font-semibold leading-4">
+                    <p className="truncate text-[14px] font-semibold leading-5">
                       {calendarEvent.course.name}
                     </p>
-                    <p className="truncate text-[10px] opacity-90">
+                    <p className="truncate text-[12px] opacity-90">
                       {calendarEvent.slot.startTime}–
                       {calendarEvent.slot.endTime}
                     </p>
                     {calendarEvent.slot.location ? (
-                      <p className="truncate text-[10px] opacity-80">
+                      <p className="truncate text-[12px] opacity-80">
                         {calendarEvent.slot.location}
                       </p>
                     ) : null}

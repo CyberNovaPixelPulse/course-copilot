@@ -1,40 +1,12 @@
-import { reconcileEcpayEntitlement, recordEcpayUsage } from "@/lib/ecpay-orders";
-import { NextRequest } from "next/server";
 import {
-  incrementParse,
-  readEntitlement,
-  usageResponse,
-  withAccountId,
-  withFreeScans,
-} from "@/lib/entitlement";
-import { getGoogleSession } from "@/lib/session";
-
-export async function GET(request: NextRequest) {
-  const session = await getGoogleSession();
-  const googleId = session?.user?.id || session?.user?.email;
-  let entitlement = readEntitlement(request);
-  if (googleId) entitlement = withAccountId(entitlement, googleId);
-  if (googleId) entitlement = await reconcileEcpayEntitlement(entitlement);
-  entitlement = withFreeScans(entitlement, Boolean(session));
-  return usageResponse(entitlement, { signedIn: Boolean(session) }, Boolean(session));
-}
-
-export async function POST(request: NextRequest) {
-  const session = await getGoogleSession();
-  const googleId = session?.user?.id || session?.user?.email;
-  let entitlement = readEntitlement(request);
-  if (googleId) entitlement = withAccountId(entitlement, googleId);
-  if (googleId) entitlement = await reconcileEcpayEntitlement(entitlement);
-  entitlement = withFreeScans(entitlement, Boolean(session));
-  let body: { increment?: boolean; model?: "gpt-4o" | "gpt-4o-mini" } = {};
+  accountResponse,
+  signedInAccount,
+  accountFailure,
+} from "@/lib/account-access";
+export async function GET() {
   try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    body = {};
+    return await accountResponse(await signedInAccount(), { signedIn: true });
+  } catch (e) {
+    return accountFailure(e);
   }
-  if (body.increment) {
-    entitlement = incrementParse(entitlement, body.model === "gpt-4o" ? "gpt-4o" : "gpt-4o-mini");
-    if (body.model === "gpt-4o") entitlement = await recordEcpayUsage(entitlement);
-  }
-  return usageResponse(entitlement, { signedIn: Boolean(session) }, Boolean(session));
 }

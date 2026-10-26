@@ -1,17 +1,16 @@
-import { reconcileEcpayEntitlement } from "@/lib/ecpay-orders";
-import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 import {
-  COOKIE_NAME,
-  TOKEN_HEADER,
-  decodeEntitlement,
-  emptyEntitlement,
-  readEntitlement,
-  withAccountId,
-} from "@/lib/entitlement";
+  accountUsage,
+  signedInAccount,
+  accountFailure,
+} from "@/lib/account-access";
 import { coursesToIcs } from "@/lib/ics";
-import { getGoogleSession } from "@/lib/session";
-import { WEEKDAYS, type Course, type CourseSlot, type Weekday } from "@/lib/types";
+import {
+  WEEKDAYS,
+  type Course,
+  type CourseSlot,
+  type Weekday,
+} from "@/lib/types";
 
 function isWeekday(value: string): value is Weekday {
   return (WEEKDAYS as readonly string[]).includes(value);
@@ -27,12 +26,14 @@ function isSlot(value: unknown): value is CourseSlot {
     typeof slot.endTime === "string" &&
     slot.startTime.length <= 8 &&
     slot.endTime.length <= 8 &&
-    (slot.location === undefined || (typeof slot.location === "string" && slot.location.length <= 200))
+    (slot.location === undefined ||
+      (typeof slot.location === "string" && slot.location.length <= 200))
   );
 }
 
 function isCourseList(value: unknown): value is Course[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 40) return false;
+  if (!Array.isArray(value) || value.length === 0 || value.length > 40)
+    return false;
   return value.every((item) => {
     if (!item || typeof item !== "object") return false;
     const course = item as Course;
@@ -41,7 +42,8 @@ function isCourseList(value: unknown): value is Course[] {
       course.name.length > 0 &&
       course.name.length <= 200 &&
       (course.professor === undefined ||
-        (typeof course.professor === "string" && course.professor.length <= 200)) &&
+        (typeof course.professor === "string" &&
+          course.professor.length <= 200)) &&
       Array.isArray(course.slots) &&
       course.slots.length <= 21 &&
       course.slots.every(isSlot)
@@ -55,14 +57,9 @@ const ICS_HEADERS = {
   "Cache-Control": "no-store",
 };
 
-function resolveEntitlement(request: NextRequest, token: string | null) {
-  if (request.cookies.get(COOKIE_NAME)?.value) return readEntitlement(request);
-  const fromHeader = decodeEntitlement(request.headers.get(TOKEN_HEADER));
-  if (fromHeader) return fromHeader;
-  return decodeEntitlement(token) ?? emptyEntitlement();
-}
-
-async function readExportPayload(request: NextRequest): Promise<{ courses: unknown; token: string | null }> {
+async function readExportPayload(
+  request: NextRequest,
+): Promise<{ courses: unknown; token: string | null }> {
   const packed = new URL(request.url).searchParams.get("d");
   if (packed) {
     const parsed = JSON.parse(packed) as { courses?: unknown; token?: unknown };
@@ -74,7 +71,10 @@ async function readExportPayload(request: NextRequest): Promise<{ courses: unkno
 
   const contentType = request.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    const body = (await request.json()) as { courses?: unknown; token?: unknown };
+    const body = (await request.json()) as {
+      courses?: unknown;
+      token?: unknown;
+    };
     return {
       courses: body.courses,
       token: typeof body.token === "string" ? body.token : null,
@@ -99,56 +99,38 @@ async function readExportPayload(request: NextRequest): Promise<{ courses: unkno
   return { courses: undefined, token: null };
 }
 
-async function googleAccountId(request: NextRequest) {
-  const session = await getGoogleSession();
-  const fromSession = session?.user?.id || session?.user?.email || "";
-  if (fromSession) return fromSession;
-
-  const secret = process.env.NEXTAUTH_SECRET;
-  const cookieNames = ["__Secure-next-auth.session-token", "next-auth.session-token"] as const;
-  for (const cookieName of cookieNames) {
-    const token = await getToken({
-      req: request,
-      secret,
-      cookieName,
-      secureCookie: cookieName.startsWith("__Secure-"),
-    });
-    const id =
-      (typeof token?.sub === "string" && token.sub) ||
-      (typeof token?.email === "string" && token.email) ||
-      "";
-    if (id) return id;
-  }
-  return "";
-}
-
 async function exportIcs(request: NextRequest) {
-  const googleId = await googleAccountId(request);
-  if (!googleId) {
-    return NextResponse.json(
-      { error: "Sign in with Google to download a calendar.", requiresAuth: true },
-      { status: 401 },
-    );
+  let id: string;
+  try {
+    id = await signedInAccount();
+  } catch (e) {
+    return accountFailure(e);
   }
   let payload: { courses: unknown; token: string | null };
   try {
     payload = await readExportPayload(request);
   } catch {
-    return NextResponse.json({ error: "Missing course list." }, { status: 400 });
-  }
-
-  let entitlement = resolveEntitlement(request, payload.token);
-  if (googleId) entitlement = withAccountId(entitlement, googleId);
-  if (googleId) entitlement = await reconcileEcpayEntitlement(entitlement);
-  if (!entitlement.paid) {
     return NextResponse.json(
-      { error: "Unlock the paid plan to download an .ics calendar.", requiresPayment: true },
-      { status: 402 },
+      { error: "Missing course list." },
+      { status: 400 },
     );
   }
 
+  try {
+    if (!(await accountUsage(id)).canExportIcs)
+      return NextResponse.json(
+        { error: "取得匯出資格後即可下載行事曆。", requiresPayment: true },
+        { status: 402 },
+      );
+  } catch (e) {
+    return accountFailure(e);
+  }
+
   if (!isCourseList(payload.courses)) {
-    return NextResponse.json({ error: "Course list is invalid." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Course list is invalid." },
+      { status: 400 },
+    );
   }
 
   try {
@@ -157,7 +139,10 @@ async function exportIcs(request: NextRequest) {
       headers: ICS_HEADERS,
     });
   } catch {
-    return NextResponse.json({ error: "Could not build the calendar file." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Could not build the calendar file." },
+      { status: 400 },
+    );
   }
 }
 

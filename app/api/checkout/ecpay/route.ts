@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { attachEntitlement, PLAN_PRICE_TWD, readEntitlement, withAccountId } from "@/lib/entitlement";
+import { PLAN_PRICE_TWD, emptyEntitlement } from "@/lib/entitlement";
+import { accountUsage, accountFailure } from "@/lib/account-access";
 import {
   checkMacValue as buildCheckMacValue,
   ecpayAutoSubmitHtml,
@@ -8,28 +9,39 @@ import {
   ecpayActionUrl,
   credentialsForAction,
 } from "@/lib/ecpay";
-import { createPaymentOrder, reconcileEcpayEntitlement } from "@/lib/ecpay-orders";
+import { createPaymentOrder } from "@/lib/ecpay-orders";
 import { getGoogleSession } from "@/lib/session";
 
 export async function POST(request: NextRequest) {
   const googleSession = await getGoogleSession();
   if (!googleSession?.user) {
     return NextResponse.json(
-      { error: "Sign in with Google before paying with ECPay.", requiresAuth: true },
+      {
+        error: "Sign in with Google before paying with ECPay.",
+        requiresAuth: true,
+      },
       { status: 401 },
     );
   }
 
   const action = ecpayActionUrl();
   const keys = credentialsForAction(action);
-  if (!keys) return NextResponse.json({ error: "綠界付款尚未設定完成。" }, { status: 503 });
-  const origin = new URL(process.env.NEXTAUTH_URL || request.nextUrl.origin).origin;
+  if (!keys)
+    return NextResponse.json(
+      { error: "綠界付款尚未設定完成。" },
+      { status: 503 },
+    );
+  const origin = new URL(process.env.NEXTAUTH_URL || request.nextUrl.origin)
+    .origin;
   const tradeNo = merchantTradeNo();
 
   const googleId = googleSession.user.id || googleSession.user.email || "";
-  let entitlement = readEntitlement(request);
-  if (googleId) entitlement = withAccountId(entitlement, googleId);
-  entitlement = await reconcileEcpayEntitlement(entitlement);
+  const entitlement = { ...emptyEntitlement(), userId: googleId };
+  try {
+    await accountUsage(googleId);
+  } catch (e) {
+    return accountFailure(e);
+  }
 
   const params: Record<string, string> = {
     MerchantID: keys.merchantId,
@@ -51,12 +63,18 @@ export async function POST(request: NextRequest) {
   try {
     await createPaymentOrder(tradeNo, entitlement, keys.merchantId, action);
   } catch {
-    return NextResponse.json({ error: "暫時無法建立付款訂單，請稍後再試。" }, { status: 503 });
+    return NextResponse.json(
+      { error: "暫時無法建立付款訂單，請稍後再試。" },
+      { status: 503 },
+    );
   }
 
   const response = new NextResponse(ecpayAutoSubmitHtml(action, params), {
-    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
   });
-  attachEntitlement(response, entitlement);
+
   return response;
 }

@@ -7,7 +7,12 @@ import {
   twdQuote,
   type PlanQuote,
 } from "@/lib/currency";
-import { readEntitlement, usageResponse, withAccountId } from "@/lib/entitlement";
+import {
+  accountStore,
+  accountResponse,
+  accountFailure,
+  accountUsage,
+} from "@/lib/account-access";
 import { getGoogleSession } from "@/lib/session";
 
 function isEcpayCheckout() {
@@ -35,7 +40,10 @@ export async function POST(request: NextRequest) {
   const googleSession = await getGoogleSession();
   if (!googleSession?.user) {
     return NextResponse.json(
-      { error: "Sign in with Google to unlock the NT$9 plan.", requiresAuth: true },
+      {
+        error: "Sign in with Google to unlock the NT$9 plan.",
+        requiresAuth: true,
+      },
       { status: 401 },
     );
   }
@@ -43,20 +51,26 @@ export async function POST(request: NextRequest) {
   const stripe = stripeClient();
   if (!stripe) {
     return NextResponse.json(
-      { error: "Stripe is not configured. Add STRIPE_SECRET_KEY to .env.local." },
+      {
+        error: "Stripe is not configured. Add STRIPE_SECRET_KEY to .env.local.",
+      },
       { status: 503 },
     );
   }
 
   const googleId = googleSession.user.id || googleSession.user.email || "";
-  let entitlement = readEntitlement(request);
-  if (googleId) entitlement = withAccountId(entitlement, googleId);
+  try {
+    await accountUsage(googleId);
+  } catch (e) {
+    return accountFailure(e);
+  }
   const origin = request.nextUrl.origin;
 
   let locale = "zh-TW";
   try {
     const body = (await request.json()) as { locale?: unknown };
-    if (typeof body?.locale === "string" && body.locale.length <= 35) locale = body.locale;
+    if (typeof body?.locale === "string" && body.locale.length <= 35)
+      locale = body.locale;
   } catch {
     locale = "zh-TW";
   }
@@ -69,9 +83,9 @@ export async function POST(request: NextRequest) {
     mode: "payment",
     success_url: `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/#upload`,
-    client_reference_id: entitlement.userId,
+    client_reference_id: googleId,
     metadata: {
-      userId: entitlement.userId,
+      userId: googleId,
       currency: quote.currency,
       amount: String(quote.amount),
     },
@@ -91,13 +105,25 @@ export async function POST(request: NextRequest) {
   });
 
   if (!checkoutSession.url) {
-    return NextResponse.json({ error: "Could not start Stripe Checkout." }, { status: 502 });
+    return NextResponse.json(
+      { error: "Could not start Stripe Checkout." },
+      { status: 502 },
+    );
   }
 
-  const response = usageResponse(
-    entitlement,
-    { url: checkoutSession.url, sessionId: checkoutSession.id },
-    true,
-  );
-  return response;
+  try {
+    await accountStore().saveCheckout(
+      googleId,
+      checkoutSession.id,
+      quote.unitAmount,
+      quote.currency,
+    );
+    const response = await accountResponse(googleId, {
+      url: checkoutSession.url,
+      sessionId: checkoutSession.id,
+    });
+    return response;
+  } catch (e) {
+    return accountFailure(e);
+  }
 }

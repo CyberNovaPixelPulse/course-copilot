@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:payments": "node --test tests/ecpay.test.cjs"
+    "test:payments": "node --test tests/ecpay.test.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "test:accounts": "node --test tests/account-entitlements.test.cjs",
+    "accounts:admin": "node scripts/account-admin.cjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

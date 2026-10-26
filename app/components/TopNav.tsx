@@ -11,6 +11,7 @@ const OPEN_PAYWALL_EVENT = "cc-open-paywall";
 const USAGE_UPDATED_EVENT = "cc-usage-updated";
 
 type CreditUsage = {
+  userId?: string;
   paid: boolean;
   gpt4oRemaining: number;
   freeScansRemaining?: number;
@@ -23,9 +24,13 @@ type CreditBadge = {
 
 function creditText(t: Dictionary, credits: CreditBadge) {
   if (credits.mode === "free") {
-    return (t.nav.freeCredits ?? ((count: number) => `Free scans: ${count}`))(credits.count);
+    return (t.nav.freeCredits ?? ((count: number) => `Free scans: ${count}`))(
+      credits.count,
+    );
   }
-  return (t.nav.credits ?? ((count: number) => `Credits: ${count}`))(credits.count);
+  return (t.nav.credits ?? ((count: number) => `Credits: ${count}`))(
+    credits.count,
+  );
 }
 
 function UserAvatar({
@@ -40,7 +45,11 @@ function UserAvatar({
   if (image) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={image} alt="" className={`${className} rounded-full object-cover ring-1 ring-stone-200`} />
+      <img
+        src={image}
+        alt=""
+        className={`${className} rounded-full object-cover ring-1 ring-stone-200`}
+      />
     );
   }
   return (
@@ -68,7 +77,9 @@ function LanguageList({
   const listRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
-    const selected = listRef.current?.querySelector<HTMLElement>("[aria-selected='true']");
+    const selected = listRef.current?.querySelector<HTMLElement>(
+      "[aria-selected='true']",
+    );
     selected?.scrollIntoView({ block: "nearest" });
   }, [locale]);
 
@@ -98,11 +109,19 @@ function LanguageList({
               }`}
             >
               <span className="min-w-0">
-                <span className="block truncate font-medium">{item.native}</span>
-                <span className="block truncate text-xs text-stone-500">{item.english}</span>
+                <span className="block truncate font-medium">
+                  {item.native}
+                </span>
+                <span className="block truncate text-xs text-stone-500">
+                  {item.english}
+                </span>
               </span>
               {selected ? (
-                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-indigo-600" aria-hidden>
+                <svg
+                  viewBox="0 0 20 20"
+                  className="h-4 w-4 shrink-0 text-indigo-600"
+                  aria-hidden
+                >
                   <path
                     fill="currentColor"
                     d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.2 7.2a1 1 0 0 1-1.4 0L3.3 9.1a1 1 0 1 1 1.4-1.4l3.1 3.1 6.5-6.5a1 1 0 0 1 1.4 0Z"
@@ -220,6 +239,10 @@ export default function TopNav() {
 
   useEffect(() => {
     if (status === "loading") return;
+    if (status === "unauthenticated") {
+      queueMicrotask(() => setCredits({ mode: "guest", count: 0 }));
+      return;
+    }
     let cancelled = false;
 
     async function loadCredits() {
@@ -227,27 +250,35 @@ export default function TopNav() {
         const token = window.localStorage.getItem(STORAGE_KEY);
         const headers: HeadersInit = token ? { [TOKEN_HEADER]: token } : {};
         const response = await fetch("/api/user/usage", { headers });
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (!cancelled) setCredits(null);
+          return;
+        }
         const data = (await response.json()) as CreditUsage;
         if (!cancelled) applyCreditData(data);
       } catch {
-        if (!cancelled) setCredits({ mode: status === "authenticated" ? "free" : "guest", count: 0 });
+        if (!cancelled) setCredits(null);
       }
     }
 
     function applyCreditData(data: CreditUsage) {
       if (data.paid) {
-        setCredits({ mode: "paid", count: data.gpt4oRemaining });
+        setCredits({
+          mode: "paid",
+          count: data.gpt4oRemaining + (data.freeScansRemaining ?? 0),
+        });
       } else if (status === "authenticated") {
         setCredits({ mode: "free", count: data.freeScansRemaining ?? 0 });
       } else {
-        setCredits({ mode: "guest", count: 0 });
+        queueMicrotask(() => setCredits({ mode: "guest", count: 0 }));
       }
     }
 
     function onUsage(event: Event) {
       const detail = (event as CustomEvent<CreditUsage>).detail;
       if (detail && typeof detail.paid === "boolean") {
+        if (detail.userId !== (session?.user?.id || session?.user?.email))
+          return;
         applyCreditData(detail);
         return;
       }
@@ -260,7 +291,7 @@ export default function TopNav() {
       cancelled = true;
       window.removeEventListener(USAGE_UPDATED_EVENT, onUsage);
     };
-  }, [status]);
+  }, [status, session?.user?.id, session?.user?.email]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -282,7 +313,7 @@ export default function TopNav() {
     setMenuOpen(false);
   }
 
-  function CreditControl({ compact }: { compact: boolean }) {
+  function renderCreditControl(compact: boolean) {
     if (credits === null) {
       return (
         <div
@@ -312,13 +343,18 @@ export default function TopNav() {
     <>
       <header className="fixed inset-x-0 top-0 z-50 overflow-x-hidden border-b border-stone-200/80 bg-white/90 backdrop-blur-md md:overflow-visible">
         <div className="flex items-center gap-2 overflow-x-hidden px-3 py-2.5 md:hidden">
-          <Link href="/" className="flex min-w-0 flex-1 items-center gap-1.5 text-stone-900">
+          <Link
+            href="/"
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-stone-900"
+          >
             <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-xs font-semibold text-white">
               CC
             </span>
-            <span className="truncate text-sm font-semibold tracking-tight">{t.nav.appName}</span>
+            <span className="truncate text-sm font-semibold tracking-tight">
+              {t.nav.appName}
+            </span>
           </Link>
-          <CreditControl compact />
+          {renderCreditControl(true)}
           <MenuButton
             label={menuOpen ? t.nav.closeMenu : t.nav.openMenu}
             expanded={menuOpen}
@@ -346,13 +382,21 @@ export default function TopNav() {
           </Link>
 
           <div className="flex min-w-0 items-center justify-end gap-3 justify-self-end">
-            <LanguageMenu label={t.nav.language} locale={locale} setLocale={setLocale} />
-            <CreditControl compact={false} />
+            <LanguageMenu
+              label={t.nav.language}
+              locale={locale}
+              setLocale={setLocale}
+            />
+            {renderCreditControl(false)}
             {status === "loading" ? (
               <div className="h-9 w-28 animate-pulse rounded-full bg-stone-100" />
             ) : signedIn ? (
               <div className="flex items-center gap-2">
-                <UserAvatar image={session?.user?.image} name={displayName} className="h-8 w-8 text-xs" />
+                <UserAvatar
+                  image={session?.user?.image}
+                  name={displayName}
+                  className="h-8 w-8 text-xs"
+                />
                 <span className="hidden max-w-[8rem] truncate text-sm text-stone-600 lg:block">
                   {session?.user?.name || session?.user?.email}
                 </span>
@@ -367,7 +411,9 @@ export default function TopNav() {
             ) : (
               <button
                 type="button"
-                onClick={() => void signIn("google", { callbackUrl: "/#upload" })}
+                onClick={() =>
+                  void signIn("google", { callbackUrl: "/#upload" })
+                }
                 className="rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
               >
                 {t.nav.signIn}
@@ -405,13 +451,21 @@ export default function TopNav() {
                 <div className="h-12 animate-pulse rounded-2xl bg-stone-100" />
               ) : signedIn ? (
                 <div className="flex items-center gap-3">
-                  <UserAvatar image={session?.user?.image} name={displayName} className="h-10 w-10 shrink-0 text-sm" />
+                  <UserAvatar
+                    image={session?.user?.image}
+                    name={displayName}
+                    className="h-10 w-10 shrink-0 text-sm"
+                  />
                   <div className="min-w-0 flex-1">
                     {session?.user?.name ? (
-                      <p className="truncate text-sm font-medium text-stone-900">{session.user.name}</p>
+                      <p className="truncate text-sm font-medium text-stone-900">
+                        {session.user.name}
+                      </p>
                     ) : null}
                     {session?.user?.email ? (
-                      <p className="truncate text-xs text-stone-500">{session.user.email}</p>
+                      <p className="truncate text-xs text-stone-500">
+                        {session.user.email}
+                      </p>
                     ) : null}
                   </div>
                   <button
@@ -425,7 +479,9 @@ export default function TopNav() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => void signIn("google", { callbackUrl: "/#upload" })}
+                  onClick={() =>
+                    void signIn("google", { callbackUrl: "/#upload" })
+                  }
                   className="w-full rounded-full bg-stone-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-stone-800"
                 >
                   {t.nav.signIn}
@@ -434,7 +490,9 @@ export default function TopNav() {
             </section>
 
             <section className="border-b border-stone-100 py-4">
-              <p className="mb-3 text-xs font-medium tracking-wide text-stone-400">{t.nav.language}</p>
+              <p className="mb-3 text-xs font-medium tracking-wide text-stone-400">
+                {t.nav.language}
+              </p>
               <LanguageList
                 id="language-menu-drawer"
                 label={t.nav.language}
@@ -446,7 +504,7 @@ export default function TopNav() {
 
             <section className="border-b border-stone-100 py-4">
               <p className="text-sm font-medium text-stone-800">
-                {credits ? creditLabel : t.nav.topUp ?? "Top up"}
+                {credits ? creditLabel : (t.nav.topUp ?? "Top up")}
               </p>
               <button
                 type="button"

@@ -1,22 +1,18 @@
-import { reconcileEcpayEntitlement, recordEcpayUsage } from "@/lib/ecpay-orders";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { parseScheduleImage, type AiCallMetric, type ScheduleMeeting } from "@/lib/parse-schedule";
+import {
+  parseScheduleImage,
+  type AiCallMetric,
+  type ScheduleMeeting,
+} from "@/lib/parse-schedule";
 import { logAiUsage } from "@/lib/turso";
 import {
-  consumeFreeScan,
-  freeScansRemaining,
-  gpt4oAllowance,
-  incrementParse,
-  readEntitlement,
-  toUsagePublic,
-  attachEntitlement,
-  usageBilling,
-  withAccountId,
-  withFreeScans,
-  type UsageBilling,
-} from "@/lib/entitlement";
-import { getGoogleSession } from "@/lib/session";
+  accountStore,
+  accountUsage,
+  accountFailure,
+  signedInAccount,
+} from "@/lib/account-access";
+import { AccountError } from "@/lib/account-entitlements";
 import { WEEKDAYS, type Course, type CourseSlot } from "@/lib/types";
 
 export const maxDuration = 120;
@@ -24,14 +20,21 @@ export const maxDuration = 120;
 const TURSO_LOG_FAILURE = "後台數據記錄失敗，系統已中斷此操作以防資料遺漏";
 
 function tursoLoggingFailed(error: unknown) {
-  return error instanceof Error && error.message.startsWith("[Turso Logging Failed]");
+  return (
+    error instanceof Error && error.message.startsWith("[Turso Logging Failed]")
+  );
 }
 
 function tursoLoggingFailureResponse() {
   return NextResponse.json({ error: TURSO_LOG_FAILURE }, { status: 500 });
 }
 
-const ACCEPTED_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const ACCEPTED_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]);
 const MAX_BYTES = 15 * 1024 * 1024;
 
 const TIME_MAP: Record<string, { start: string; end: string }> = {
@@ -68,15 +71,6 @@ function timeToMinutes(value: string) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
-function exactClock(value: string) {
-  const match = value.trim().match(/^(\d{1,2})\s*[:：.]\s*(\d{2})$/);
-  if (!match) return "";
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (hours > 23 || minutes > 59) return "";
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-}
-
 function formatMinutes(total: number) {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
@@ -84,7 +78,10 @@ function formatMinutes(total: number) {
 function cleanCourseName(name: string) {
   return name
     .replace(/^(?:[（(]\s*(?:\d{1,2}|[A-J])\s*[）)]\s*)+/i, "")
-    .replace(/[（(]\s*\d{1,2}\s*[:：.]\s*\d{2}\s*[-~～至到]\s*\d{1,2}\s*[:：.]\s*\d{2}\s*[）)]/g, "")
+    .replace(
+      /[（(]\s*\d{1,2}\s*[:：.]\s*\d{2}\s*[-~～至到]\s*\d{1,2}\s*[:：.]\s*\d{2}\s*[）)]/g,
+      "",
+    )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -97,196 +94,13 @@ function periodCode(value: string) {
     .replace(/\s*[）)]$/, "")
     .replace(/^第/, "")
     .replace(/節$/, "");
-  if (/^[A-J]$/.test(token) || (/^\d{1,2}$/.test(token) && Number(token) >= 1 && Number(token) <= 15)) {
+  if (
+    /^[A-J]$/.test(token) ||
+    (/^\d{1,2}$/.test(token) && Number(token) >= 1 && Number(token) <= 15)
+  ) {
     return /^\d+$/.test(token) ? String(Number(token)) : token;
   }
   return "";
-}
-
-function leadingCode(text: string) {
-  let rest = text.trim();
-  let letter = "";
-  let digit = "";
-  const marker = /^[（(]\s*([A-Ja-j]|\d{1,2})\s*[）)]\s*/;
-  while (true) {
-    const match = rest.match(marker);
-    if (!match) break;
-    const code = periodCode(match[1]);
-    if (/^[A-J]$/.test(code)) letter = letter || code;
-    else if (code) digit = digit || code;
-    rest = rest.slice(match[0].length);
-  }
-  return { code: letter || digit, rest };
-}
-
-function markerCode(marker: string) {
-  const withoutClocks = marker.replace(/\d{1,2}\s*[:：.]\s*\d{2}/g, " ");
-  const tokens = withoutClocks.toUpperCase().match(/[A-J](?![A-Z])|\d{1,2}/g) ?? [];
-  for (const token of tokens) {
-    const code = periodCode(token);
-    if (/^[A-J]$/.test(code)) return code;
-  }
-  for (const token of tokens) {
-    const code = periodCode(token);
-    if (code) return code;
-  }
-  return "";
-}
-
-function clocksIn(text: string) {
-  const matches = [...text.matchAll(/(\d{1,2})\s*[:：.]\s*(\d{2})/g)];
-  if (matches.length < 2) return null;
-  const start = exactClock(`${matches[0][1]}:${matches[0][2]}`);
-  const end = exactClock(`${matches[matches.length - 1][1]}:${matches[matches.length - 1][2]}`);
-  const startMinutes = timeToMinutes(start);
-  const endMinutes = timeToMinutes(end);
-  if (!start || !end || startMinutes === null || endMinutes === null || endMinutes <= startMinutes) return null;
-  return { start, end };
-}
-
-export type ScheduleTableRow = {
-  marker: string;
-  cells: [string, string, string, string, string];
-};
-
-function splitTableLine(line: string) {
-  let raw = line.trim().replaceAll("｜", "|");
-  if (raw.startsWith("|")) raw = raw.slice(1);
-  if (raw.endsWith("|")) raw = raw.slice(0, -1);
-  return raw.split("|").map((cell) => cell.replace(/<br\s*\/?>/gi, "\n").trim());
-}
-
-function isDividerRow(cells: string[]) {
-  return cells.length > 0 && cells.every((cell) => /^:?-{2,}:?$/.test(cell.replace(/\s/g, "")));
-}
-
-function isHeaderRow(cells: string[]) {
-  return /週一|周一|星期一|monday/i.test(cells.join(" "));
-}
-
-export function parseMarkdownTable(markdown: string): ScheduleTableRow[] {
-  const source = markdown
-    .replace(/```(?:markdown|md)?/gi, "")
-    .replace(/```/g, "");
-  const rows: ScheduleTableRow[] = [];
-  let skippedHeader = false;
-  for (const line of source.split(/\r?\n/)) {
-    if (!line.includes("|") && !line.includes("｜")) continue;
-    const cells = splitTableLine(line);
-    if (cells.length < 2 || isDividerRow(cells)) continue;
-    if (!skippedHeader && isHeaderRow(cells)) {
-      skippedHeader = true;
-      continue;
-    }
-    const [marker = "", ...days] = cells;
-    const padded = [...days, "", "", "", "", ""].slice(0, 5) as [
-      string,
-      string,
-      string,
-      string,
-      string,
-    ];
-    rows.push({ marker, cells: padded });
-  }
-  return rows;
-}
-
-function slotFromCodes(codes: string[], weekday: CourseSlot["weekday"], room: string): CourseSlot | null {
-  const known = codes.filter((code) => TIME_MAP[code]);
-  const chosen = known.some((code) => /^[A-J]$/.test(code))
-    ? known.filter((code) => /^[A-J]$/.test(code))
-    : known.filter((code) => /^\d+$/.test(code));
-  if (chosen.length === 0) return null;
-  const starts = chosen.map((code) => timeToMinutes(TIME_MAP[code].start) ?? Number.POSITIVE_INFINITY);
-  const ends = chosen.map((code) => timeToMinutes(TIME_MAP[code].end) ?? 0);
-  const start = Math.min(...starts);
-  const end = Math.max(...ends);
-  if (!Number.isFinite(start) || end <= start) return null;
-  const startHour = Math.floor(start / 60);
-  const endHour = Math.floor(end / 60);
-  return {
-    weekday,
-    startTime: `${String(startHour).padStart(2, "0")}:${String(start % 60).padStart(2, "0")}`,
-    endTime: `${String(endHour).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}`,
-    location: room,
-  };
-}
-
-export function coursesFromMarkdown(markdown: string): Course[] {
-  const table = parseMarkdownTable(markdown);
-  const grouped = new Map<string, { name: string; slots: CourseSlot[] }>();
-
-  for (let column = 0; column < 5; column += 1) {
-    const weekday = WEEKDAYS[column];
-    let run: { name: string; room: string; codes: string[]; start: string; end: string } | null = null;
-    const flush = () => {
-      if (!run) return;
-      const fromCodes = slotFromCodes(run.codes, weekday, run.room);
-      const slot =
-        fromCodes ??
-        (run.start && run.end
-          ? { weekday, startTime: run.start, endTime: run.end, location: run.room }
-          : null);
-      if (slot) {
-        const key = run.name.toLowerCase();
-        const course = grouped.get(key) ?? { name: run.name, slots: [] };
-        const exists = course.slots.some(
-          (other) =>
-            other.weekday === slot.weekday &&
-            other.startTime === slot.startTime &&
-            other.endTime === slot.endTime,
-        );
-        if (!exists) course.slots.push(slot);
-        grouped.set(key, course);
-      }
-      run = null;
-    };
-
-    for (const row of table) {
-      const raw = row.cells[column].trim();
-      if (!raw) {
-        flush();
-        continue;
-      }
-      const marked = leadingCode(raw);
-      const lines = marked.rest.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-      const name = cleanCourseName(lines[0] ?? "");
-      const room = lines.slice(1).join(" ").trim();
-      if (!name) {
-        flush();
-        continue;
-      }
-      const code = marked.code || markerCode(row.marker);
-      const clocks = code ? null : clocksIn(`${row.marker} ${raw}`);
-      if (run && run.name === name) {
-        if (code) run.codes.push(code);
-        if (!run.room && room) run.room = room;
-        if (!code && clocks) run.end = clocks.end;
-        continue;
-      }
-      flush();
-      run = {
-        name,
-        room,
-        codes: code ? [code] : [],
-        start: clocks?.start ?? "",
-        end: clocks?.end ?? "",
-      };
-    }
-    flush();
-  }
-
-  return [...grouped.values()]
-    .map((course) => ({
-      name: course.name,
-      professor: "",
-      slots: course.slots.sort(
-        (a, b) =>
-          WEEKDAYS.indexOf(a.weekday) - WEEKDAYS.indexOf(b.weekday) ||
-          (timeToMinutes(a.startTime) ?? 0) - (timeToMinutes(b.startTime) ?? 0),
-      ),
-    }))
-    .filter((course) => course.slots.length > 0);
 }
 
 const TURSO_TIMEOUT_MS = 15_000;
@@ -303,9 +117,17 @@ function withTimeout<T>(work: Promise<T>, ms: number, message: string) {
 }
 
 function isTimeoutError(error: unknown) {
-  const name = error && typeof error === "object" && "name" in error ? String(error.name) : "";
+  const name =
+    error && typeof error === "object" && "name" in error
+      ? String(error.name)
+      : "";
   const message = error instanceof Error ? error.message : "";
-  return name === "TimeoutError" || name === "AbortError" || name === "APIConnectionTimeoutError" || /timed out|timeout|aborted/i.test(message);
+  return (
+    name === "TimeoutError" ||
+    name === "AbortError" ||
+    name === "APIConnectionTimeoutError" ||
+    /timed out|timeout|aborted/i.test(message)
+  );
 }
 
 const PERIOD_BREAK_MINUTES = 20;
@@ -319,25 +141,51 @@ function codesInText(text: string) {
   return codes;
 }
 
-function spansOverlap(left: { startTime: string; endTime: string }, right: { startTime: string; endTime: string }) {
+function spansOverlap(
+  left: { startTime: string; endTime: string },
+  right: { startTime: string; endTime: string },
+) {
   const leftStart = timeToMinutes(left.startTime);
   const leftEnd = timeToMinutes(left.endTime);
   const rightStart = timeToMinutes(right.startTime);
   const rightEnd = timeToMinutes(right.endTime);
-  if (leftStart === null || leftEnd === null || rightStart === null || rightEnd === null) return false;
+  if (
+    leftStart === null ||
+    leftEnd === null ||
+    rightStart === null ||
+    rightEnd === null
+  )
+    return false;
   return leftStart < rightEnd && rightStart < leftEnd;
 }
 
-function slotFromRun(codes: string[], weekday: CourseSlot["weekday"], room: string): CourseSlot | null {
+function slotFromRun(
+  codes: string[],
+  weekday: CourseSlot["weekday"],
+  room: string,
+): CourseSlot | null {
   const clocks = codes.map((code) => TIME_MAP[code]).filter(Boolean);
   if (clocks.length === 0) return null;
-  const start = Math.min(...clocks.map((clock) => timeToMinutes(clock.start) ?? Number.POSITIVE_INFINITY));
+  const start = Math.min(
+    ...clocks.map(
+      (clock) => timeToMinutes(clock.start) ?? Number.POSITIVE_INFINITY,
+    ),
+  );
   const end = Math.max(...clocks.map((clock) => timeToMinutes(clock.end) ?? 0));
   if (!Number.isFinite(start) || end <= start) return null;
-  return { weekday, startTime: formatMinutes(start), endTime: formatMinutes(end), location: room };
+  return {
+    weekday,
+    startTime: formatMinutes(start),
+    endTime: formatMinutes(end),
+    location: room,
+  };
 }
 
-function slotsFromPeriodCodes(codes: string[], weekday: CourseSlot["weekday"], room: string) {
+function slotsFromPeriodCodes(
+  codes: string[],
+  weekday: CourseSlot["weekday"],
+  room: string,
+) {
   const unique = [...new Set(codes)];
   const letters = unique.filter((code) => /^[A-J]$/.test(code)).sort();
   const numbers = unique
@@ -348,7 +196,8 @@ function slotsFromPeriodCodes(codes: string[], weekday: CourseSlot["weekday"], r
   const letterRuns: string[][] = [];
   for (const letter of letters) {
     const run = letterRuns[letterRuns.length - 1];
-    if (run && letter.charCodeAt(0) === run[run.length - 1].charCodeAt(0) + 1) run.push(letter);
+    if (run && letter.charCodeAt(0) === run[run.length - 1].charCodeAt(0) + 1)
+      run.push(letter);
     else letterRuns.push([letter]);
   }
   const numberRuns: number[][] = [];
@@ -364,7 +213,9 @@ function slotsFromPeriodCodes(codes: string[], weekday: CourseSlot["weekday"], r
   const numberSlots = numberRuns
     .map((run) => slotFromRun(run.map(String), weekday, room))
     .filter((slot): slot is CourseSlot => Boolean(slot))
-    .filter((slot) => !letterSlots.some((letter) => spansOverlap(slot, letter)));
+    .filter(
+      (slot) => !letterSlots.some((letter) => spansOverlap(slot, letter)),
+    );
   return [...letterSlots, ...numberSlots];
 }
 
@@ -373,16 +224,27 @@ function mergeTouchingSlots(slots: CourseSlot[]) {
   for (const weekday of WEEKDAYS) {
     const daySlots = slots
       .filter((slot) => slot.weekday === weekday)
-      .sort((left, right) => (timeToMinutes(left.startTime) ?? 0) - (timeToMinutes(right.startTime) ?? 0));
+      .sort(
+        (left, right) =>
+          (timeToMinutes(left.startTime) ?? 0) -
+          (timeToMinutes(right.startTime) ?? 0),
+      );
     for (const slot of daySlots) {
       const start = timeToMinutes(slot.startTime);
       const end = timeToMinutes(slot.endTime);
       if (start === null || end === null || end <= start) continue;
       const current = merged[merged.length - 1];
-      const currentEnd = current?.weekday === weekday ? timeToMinutes(current.endTime) : null;
-      if (current && current.weekday === weekday && currentEnd !== null && start <= currentEnd + PERIOD_BREAK_MINUTES) {
+      const currentEnd =
+        current?.weekday === weekday ? timeToMinutes(current.endTime) : null;
+      if (
+        current &&
+        current.weekday === weekday &&
+        currentEnd !== null &&
+        start <= currentEnd + PERIOD_BREAK_MINUTES
+      ) {
         if (end > currentEnd) current.endTime = slot.endTime;
-        if (!current.location && slot.location) current.location = slot.location;
+        if (!current.location && slot.location)
+          current.location = slot.location;
         continue;
       }
       merged.push({ ...slot });
@@ -391,10 +253,16 @@ function mergeTouchingSlots(slots: CourseSlot[]) {
   return merged;
 }
 
-export function coursesFromMeetings(meetings: ScheduleMeeting[]): Course[] {
+function coursesFromMeetings(meetings: ScheduleMeeting[]): Course[] {
   const grouped = new Map<
     string,
-    { name: string; days: Map<CourseSlot["weekday"], { codes: string[]; room: string; ranges: CourseSlot[] }> }
+    {
+      name: string;
+      days: Map<
+        CourseSlot["weekday"],
+        { codes: string[]; room: string; ranges: CourseSlot[] }
+      >;
+    }
   >();
 
   for (const meeting of meetings) {
@@ -418,13 +286,17 @@ export function coursesFromMeetings(meetings: ScheduleMeeting[]): Course[] {
     .map((course) => {
       const slots: CourseSlot[] = [];
       for (const [weekday, day] of course.days) {
-        slots.push(...slotsFromPeriodCodes(day.codes, weekday, day.room), ...day.ranges);
+        slots.push(
+          ...slotsFromPeriodCodes(day.codes, weekday, day.room),
+          ...day.ranges,
+        );
       }
       return {
         name: course.name,
         professor: "",
         slots: mergeTouchingSlots(slots).filter(
-          (slot) => WEEKDAYS.includes(slot.weekday) && slot.startTime && slot.endTime,
+          (slot) =>
+            WEEKDAYS.includes(slot.weekday) && slot.startTime && slot.endTime,
         ),
       };
     })
@@ -440,7 +312,10 @@ export function coursesFromMeetings(meetings: ScheduleMeeting[]): Course[] {
 }
 
 function countEvents(courses: Course[]) {
-  return courses.reduce((total, course) => total + (course.slots?.length ?? 0), 0);
+  return courses.reduce(
+    (total, course) => total + (course.slots?.length ?? 0),
+    0,
+  );
 }
 
 function createTaskId() {
@@ -458,7 +333,10 @@ function createTaskId() {
 
 export async function POST(request: NextRequest) {
   const taskId = createTaskId();
-  let billing: UsageBilling = { payment_type: "free", fee_charged_twd: 0, coupon_code: null };
+  let accountId = "";
+  let jobId = "";
+  let reserved = false;
+  let creditBucket = "unreserved";
   let eventsCount = 0;
   let mimeType = "";
 
@@ -485,9 +363,11 @@ export async function POST(request: NextRequest) {
             ...params.metadata,
             task_id: taskId,
             step: params.step,
-            payment_type: billing.payment_type,
-            fee_charged_twd: billing.fee_charged_twd,
-            coupon_code: billing.coupon_code,
+            credit_bucket: creditBucket,
+            // A pooled account credit does not identify a payment or coupon.
+            payment_type: creditBucket === "free" ? "free" : "account_credit",
+            fee_charged_twd: 0,
+            coupon_code: null,
             events_count: eventsCount,
           },
         }),
@@ -503,39 +383,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const session = await getGoogleSession();
-    const authenticated = Boolean(session);
-    if (!authenticated) {
-      return NextResponse.json(
-        { error: "Sign in with Google to use your 3 free scans.", requiresAuth: true },
-        { status: 401 },
-      );
-    }
-    const googleId = session?.user?.id || session?.user?.email;
-    let entitlement = readEntitlement(request);
-    if (googleId) entitlement = withAccountId(entitlement, googleId);
-    if (googleId) entitlement = await reconcileEcpayEntitlement(entitlement);
-    entitlement = withFreeScans(entitlement, true);
-    billing = usageBilling(entitlement);
-    if (entitlement.paid && entitlement.gpt4oCount >= gpt4oAllowance(entitlement)) {
-      return NextResponse.json({
-        error: "高精度辨識額度已用完，請購買新的 30 次額度。",
-        requiresPayment: true,
-        usage: toUsagePublic(entitlement, true),
-      }, { status: 402 });
-    }
-    if (!entitlement.paid && freeScansRemaining(entitlement, true) <= 0) {
-      const response = NextResponse.json(
-        {
-          error: "Free scans are used up. Unlock the paid plan to keep scanning.",
-          requiresPayment: true,
-          usage: toUsagePublic(entitlement, true),
-        },
-        { status: 402 },
-      );
-      attachEntitlement(response, entitlement);
-      return response;
-    }
+    accountId = await signedInAccount();
+    const usageBefore = await accountUsage(accountId);
     const modelName = "gpt-4o";
     console.log("Currently using model:", modelName);
 
@@ -586,6 +435,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const submittedId = formData.get("jobId");
+    jobId = typeof submittedId === "string" ? submittedId : "";
+    const fingerprint = createHash("sha256").update(buffer).digest("hex");
+    const job = await accountStore().begin(accountId, jobId, fingerprint);
+    if (!job.started) {
+      const usage = await accountUsage(accountId);
+      return NextResponse.json(
+        { jobId, state: job.state, courses: job.courses ?? [], usage },
+        {
+          status:
+            job.state === "running"
+              ? 202
+              : job.state === "succeeded" && job.courses
+                ? 200
+                : 409,
+          headers: { "Cache-Control": "no-store" },
+        },
+      );
+    }
+    reserved = true;
+    creditBucket = job.funding;
     const parsedResult = await parseScheduleImage({
       ...imagePayload,
       model: "gpt-4o",
@@ -605,34 +475,55 @@ export async function POST(request: NextRequest) {
           stage: call.stage,
           mimeType: image.type,
           courseCount: courses.length,
-          periodCount: parsedResult.meetings.reduce((total, meeting) => total + meeting.periods.length, 0),
-          paid: entitlement.paid,
+          periodCount: parsedResult.meetings.reduce(
+            (total, meeting) => total + meeting.periods.length,
+            0,
+          ),
+          paid: usageBefore.canExportIcs,
         },
       });
     }
 
     if (courses.length === 0) {
       return NextResponse.json(
-        { error: "沒有辨識到課程，請換一張更清楚的課表再試一次。", courses: [] },
+        {
+          error: "沒有辨識到課程，請換一張更清楚的課表再試一次。",
+          courses: [],
+        },
         { status: 422 },
       );
     }
 
-    const next = entitlement.paid ? await recordEcpayUsage(incrementParse(entitlement, "gpt-4o")) : consumeFreeScan(entitlement);
-    const usage = toUsagePublic(next, authenticated);
-    const response = NextResponse.json({ courses, usage, model: "gpt-4o" });
-    attachEntitlement(response, next);
-    return response;
+    try {
+      await accountStore().complete(accountId, jobId, courses);
+    } catch (e) {
+      return accountFailure(e);
+    }
+    reserved = false;
+    const usage = await accountUsage(accountId);
+    return NextResponse.json(
+      { courses, usage, model: "gpt-4o", jobId, state: "succeeded" },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
+    if (error instanceof AccountError) return accountFailure(error);
+    if (!reserved) return accountFailure(error);
     if (tursoLoggingFailed(error)) return tursoLoggingFailureResponse();
     if (isTimeoutError(error)) {
-      return NextResponse.json({ error: "讀取課表逾時，請稍後再試。", courses: [] }, { status: 504 });
+      return NextResponse.json(
+        { error: "讀取課表逾時，請稍後再試。", courses: [] },
+        { status: 504 },
+      );
     }
 
     const message =
-      error instanceof Error ? error.message : "Failed to parse the schedule image.";
+      error instanceof Error
+        ? error.message
+        : "Failed to parse the schedule image.";
     const calls =
-      error && typeof error === "object" && Array.isArray((error as { aiCalls?: AiCallMetric[] }).aiCalls)
+      error &&
+      typeof error === "object" &&
+      Array.isArray((error as { aiCalls?: AiCallMetric[] }).aiCalls)
         ? (error as { aiCalls: AiCallMetric[] }).aiCalls
         : [];
     const failureMeta = { message, mimeType: mimeType || undefined };
@@ -674,10 +565,26 @@ export async function POST(request: NextRequest) {
       }
     } catch (logError) {
       if (tursoLoggingFailed(logError)) return tursoLoggingFailureResponse();
-      const logMessage = logError instanceof Error ? logError.message : "Failed to parse the schedule image.";
-      return NextResponse.json({ error: logMessage, courses: [] }, { status: 500 });
+      const logMessage =
+        logError instanceof Error
+          ? logError.message
+          : "Failed to parse the schedule image.";
+      return NextResponse.json(
+        { error: logMessage, courses: [] },
+        { status: 500 },
+      );
     }
     const status = message.includes("OPENAI_API_KEY") ? 500 : 502;
     return NextResponse.json({ error: message, courses: [] }, { status });
+  } finally {
+    if (reserved) {
+      try {
+        await accountStore().fail(accountId, jobId);
+      } catch {
+        console.error(
+          "Unable to release recognition reservation; expiry will recover it.",
+        );
+      }
+    }
   }
 }

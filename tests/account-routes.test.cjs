@@ -206,6 +206,33 @@ test("authenticated parse retries return saved courses without second call; acco
       );
       assert.equal(rejected.status, 400);
     }
+    // All existing authenticated payload forms remain protected and complete.
+    const packed = JSON.stringify({ courses: result.courses });
+    const compatible = [
+      () =>
+        new NextRequest(
+          "https://app.example/api/export-ics?d=" + encodeURIComponent(packed),
+        ),
+      () =>
+        new NextRequest("https://app.example/api/export-ics", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ payload: packed }).toString(),
+        }),
+    ];
+    for (const request of compatible) {
+      const download =
+        await exported[request().method === "GET" ? "GET" : "POST"](request());
+      assert.equal(download.status, 200);
+      assert.match(await download.text(), /BEGIN:VEVENT/);
+    }
+    session = null;
+    for (const request of compatible)
+      assert.equal(
+        (await exported[request().method === "GET" ? "GET" : "POST"](request()))
+          .status,
+        401,
+      );
   } finally {
     db.close();
   }

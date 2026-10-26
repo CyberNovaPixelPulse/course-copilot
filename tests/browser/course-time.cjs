@@ -284,7 +284,9 @@ const course = (name, slots) => ({ name, professor: "Fixture", slots });
       path: "/tmp/course-time-desktop.png",
       fullPage: true,
     });
-    await page.getByRole("button", { name: /下載.*ics|下載行事曆/i }).click();
+    await page
+      .getByRole("button", { name: "改用目前課表重新匯出", exact: true })
+      .click();
     const img = page.locator('img[src^="blob:"]');
     await expect(img).toBeVisible({ timeout: 20000 });
     const size = await img.evaluate((img) => ({

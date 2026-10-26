@@ -1,65 +1,52 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useI18n } from "@/lib/i18n";
-import { SHARE_URL, renderShareCard } from "@/lib/shareCard";
-import type { Course } from "@/lib/types";
-
-const FALLBACK_MESSAGE =
-  "Okay this is unreal — screenshot your schedule and it drops straight into iPhone/Google Calendar in one second. No more typing it in by hand! 👉 https://ics.necterelux.com";
-
-const APPLE_CALENDAR_LABEL = "📱 加入 iPhone / Apple 日曆";
-const APPLE_CALENDAR_HINT =
-  "💡 iPhone 用戶：點擊下方黑色通知列的【開啟方式...】，選擇【行事曆】即可一鍵加入全部課程！";
-
-function isIos() {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  if (/iPad|iPhone|iPod/.test(ua)) return true;
-  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
-}
+import {
+  downloadBlob,
+  isAppleCalendarDevice,
+} from "@/lib/calendar-export-browser";
+import type { CalendarExportController } from "./CalendarExport";
 
 export default function ExportSuccessModal({
-  courses,
-  ics,
-  onClose,
+  flow,
+  previousVersion = false,
 }: {
-  courses: Course[];
-  ics: string;
-  onClose: () => void;
+  flow: CalendarExportController;
+  previousVersion?: boolean;
 }) {
-  const { t } = useI18n();
-  const [cardUrl, setCardUrl] = useState<string | null>(null);
+  const { t, locale } = useI18n();
+  const text = (zh: string, en: string) => (locale.startsWith("zh") ? zh : en);
+  const state = useSyncExternalStore(
+    flow.subscribe,
+    flow.getSnapshot,
+    flow.getSnapshot,
+  );
+  const onClose = flow.close;
+  const [card, setCard] = useState<{ blob: Blob; url: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  const blobRef = useRef<Blob | null>(null);
-
-  const message = t.upload.shareMessage ?? FALLBACK_MESSAGE;
+  const [cardError, setCardError] = useState("");
+  const blob = state.image.blob;
+  const cardUrl = card?.blob === blob ? card?.url : null;
+  const message = text(
+    "我用這個工具把課表截圖轉成可下載的行事曆檔案與分享圖片，匯入時再依裝置提示完成操作。👉 https://ics.necterelux.com",
+    "Turn a schedule screenshot into a downloadable calendar and share image. Follow your device prompts to finish importing. 👉 https://ics.necterelux.com",
+  );
   const lineHref = `https://line.me/R/msg/text/?${encodeURIComponent(message)}`;
   const threadsHref = `https://www.threads.net/intent/post?text=${encodeURIComponent(message)}`;
 
   useEffect(() => {
-    let cancelled = false;
-    const current = { url: "" };
-    setCardUrl(null);
-    void renderShareCard(courses, {
-      heading: t.upload.shareCardHeading ?? "This semester",
-      footer: t.upload.shareCardFooter ?? `Course & Calendar Copilot · ${SHARE_URL.replace("https://", "")}`,
-      weekdays: t.calendar.weekdays,
-    })
-      .then((blob) => {
-        if (cancelled) return;
-        blobRef.current = blob;
-        current.url = URL.createObjectURL(blob);
-        setCardUrl(current.url);
-      })
-      .catch(() => {
-        if (!cancelled) setCardUrl(null);
-      });
+    if (!blob) return;
+    let active = true;
+    const url = URL.createObjectURL(blob);
+    queueMicrotask(() => {
+      if (active) setCard({ blob, url });
+    });
     return () => {
-      cancelled = true;
-      if (current.url) URL.revokeObjectURL(current.url);
+      active = false;
+      URL.revokeObjectURL(url);
     };
-  }, [courses, t]);
+  }, [blob]);
 
   useEffect(() => {
     if (!copied) return;
@@ -90,22 +77,19 @@ export default function ExportSuccessModal({
     setCopied(true);
   }
 
-  function addToAppleCalendar() {
-    if (!isIos() || !ics) return;
-    window.location.href = `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
-  }
-
   function downloadCard() {
-    const blob = blobRef.current;
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "schedule-share-card.png";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    if (!blob || !cardUrl) return;
+    try {
+      downloadBlob(blob, "schedule-share-card.png");
+      setCardError("");
+    } catch {
+      setCardError(
+        text(
+          "無法下載分享圖片，請重試。",
+          "Could not trigger image download. Please retry.",
+        ),
+      );
+    }
   }
 
   return (
@@ -118,14 +102,25 @@ export default function ExportSuccessModal({
       >
         <div className="border-b border-stone-200 px-5 py-4 sm:px-6">
           <p className="text-sm font-semibold text-indigo-600">
-            {t.upload.shareEyebrow ?? "Exported! 🎉"}
+            {text("行事曆匯出", "Calendar export")}
           </p>
-          <h2 id="export-success-title" className="mt-1 text-xl font-semibold text-stone-900">
-            {t.upload.shareTitle ?? "Your schedule is on your device!"}
+          <h2
+            id="export-success-title"
+            className="mt-1 text-xl font-semibold text-stone-900"
+          >
+            {text("行事曆檔案已準備好", "Calendar file is ready")}
           </h2>
           <p className="mt-2 text-sm leading-6 text-stone-600">
-            {t.upload.shareSubtitle ??
-              "Like it? Share it with your classmates and skip the manual typing. 🚀"}
+            {text(
+              "下載或交付已觸發後，請依裝置提示完成保存或匯入；網站無法確認是否完成。",
+              "After a handoff is triggered, follow your device prompts to save or import. This site cannot confirm completion.",
+            )}
+            {previousVersion
+              ? text(
+                  " 這次結果對應先前的課表版本。",
+                  " This result uses an earlier schedule version.",
+                )
+              : ""}
           </p>
         </div>
 
@@ -138,32 +133,84 @@ export default function ExportSuccessModal({
                 alt={t.upload.shareCardHeading ?? "This semester"}
                 className="w-full rounded-2xl border border-stone-200 shadow-sm"
               />
+            ) : state.image.phase === "error" ? (
+              <div role="alert" className="rounded-xl bg-amber-50 p-4">
+                {state.image.message}
+                <button
+                  type="button"
+                  className="mt-2 underline"
+                  onClick={() => void flow.retryImage()}
+                >
+                  {text("重試產生圖片", "Retry image")}
+                </button>
+              </div>
             ) : (
-              <div className="aspect-[9/16] w-full animate-pulse rounded-2xl bg-stone-100" />
+              <p role="status">
+                {text("分享圖片準備中…", "Preparing share image…")}
+              </p>
             )}
+            {cardError ? <p role="alert">{cardError}</p> : null}
           </div>
 
           <div className="order-1 flex min-w-0 flex-col gap-3 md:order-2">
-            <p className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium leading-6 text-amber-950">
-              {t.upload.appleCalendarHint ?? APPLE_CALENDAR_HINT}
+            {state.problem ? (
+              <p role="alert" className="rounded-xl bg-amber-50 p-3">
+                {state.problem.message}
+              </p>
+            ) : null}
+            <p role="status">
+              {state.deliveryPending
+                ? text("正在觸發交付…", "Handing off…")
+                : state.delivery === "download"
+                  ? text(
+                      "已觸發下載，請確認瀏覽器提示。",
+                      "Download triggered. Check your browser prompts.",
+                    )
+                  : state.delivery === "apple"
+                    ? text(
+                        "已觸發 Apple 交付，請查看裝置提示。",
+                        "Apple handoff triggered. Check your device prompts.",
+                      )
+                    : text(
+                        "檔案可供交付；尚未確認下載或匯入。",
+                        "File ready; download or import is not confirmed.",
+                      )}
             </p>
             <button
               type="button"
-              onClick={addToAppleCalendar}
-              className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+              disabled={state.deliveryPending}
+              onClick={() => void flow.deliver("download")}
+              className="rounded-2xl bg-indigo-600 px-4 py-3 font-semibold text-white disabled:opacity-60"
             >
-              {t.upload.appleCalendar ?? APPLE_CALENDAR_LABEL}
+              {text("下載 ICS 檔案", "Download ICS file")}
             </button>
-            <div
-              aria-hidden="true"
-              className="flex items-center gap-2 rounded-xl bg-stone-900 px-3 py-2 text-xs text-white"
-            >
-              <span className="min-w-0 flex-1 truncate">course-schedule.ics</span>
-              <span className="shrink-0 rounded-md bg-white/15 px-2 py-1 font-semibold">
-                {t.upload.appleCalendarOpenIn ?? "開啟方式..."}
-              </span>
-            </div>
-            <p className="rounded-2xl bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-700">{message}</p>
+            {isAppleCalendarDevice() ? (
+              <>
+                <button
+                  type="button"
+                  disabled={state.deliveryPending}
+                  onClick={() => void flow.deliver("apple")}
+                  className="rounded-2xl border border-indigo-300 px-4 py-3 font-semibold"
+                >
+                  {text("交付至 Apple 日曆", "Hand off to Apple Calendar")}
+                </button>
+                <p className="rounded-xl bg-amber-50 p-3">
+                  {text(
+                    "請依裝置提示完成操作。Apple 專用交付尚未完成真機驗收；若無法使用，請選擇下載 ICS 檔案。",
+                    "Follow your device prompts. Apple-specific handoff has not completed real-device acceptance; use the ICS download if needed.",
+                  )}
+                </p>
+              </>
+            ) : null}
+            <p className="rounded-xl bg-stone-50 p-3">
+              {text(
+                "日期以產生當天的伺服器日期往後找對應星期（當天即使時間已過仍使用當天），每週重複 16 次；並非依學校學期安排。重複匯入可能新增重複事件，請自行檢查日曆。",
+                "Dates use the corresponding weekday on or after the server generation date, including today even if class time has passed, repeating weekly 16 times. This is not a school term schedule. Repeated imports may add duplicates; check your calendar.",
+              )}
+            </p>
+            <p className="rounded-2xl bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-700">
+              {message}
+            </p>
             {copied ? (
               <p
                 role="status"

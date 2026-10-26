@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  exportableCourses,
-  isCourseStructure,
-  inspectSchedule,
-} from "@/lib/course-time";
+import { isCourseStructure, inspectSchedule } from "@/lib/course-time";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -23,6 +19,7 @@ import type { PaymentProvider } from "@/lib/checkout-recovery";
 import { useEntitlements, EntitlementStatus } from "./EntitlementDisplay";
 import RecognitionBatch, { useRecognitionBatch } from "./RecognitionBatch";
 import AccountActivity from "./AccountActivity";
+import CalendarExportStatus, { useCalendarExport } from "./CalendarExport";
 import ExportSuccessModal from "./ExportSuccessModal";
 import ScheduleCropModal from "./ScheduleCropModal";
 import AddCourseModal from "./AddCourseModal";
@@ -48,18 +45,6 @@ function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function downloadIcsFile(ics: string, filename = "course-schedule.ics") {
-  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
 }
 
 function EmphasizedText({ text }: { text: string }) {
@@ -119,8 +104,8 @@ function ScheduleUploadScreen() {
     null,
   );
   const [cropQueue, setCropQueue] = useState<{ id: string; file: File }[]>([]);
-  const [exportSuccessOpen, setExportSuccessOpen] = useState(false);
-  const [exportedIcs, setExportedIcs] = useState("");
+  const openPayment = useCallback(() => setShowPaywall(true), []);
+  const calendarExport = useCalendarExport(accountId, openPayment);
   const [addCourseOpen, setAddCourseOpen] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const previews = useRef<string[]>([]);
@@ -268,40 +253,8 @@ function ScheduleUploadScreen() {
     }
   }
 
-  async function exportCalendar() {
-    try {
-      exportableCourses(courses);
-      const response = await fetch("/api/export-ics", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ courses }),
-      });
-      if (response.status === 401) {
-        entitlementStore.requireSignIn();
-        await signIn("google", { callbackUrl: "/#upload" });
-        return;
-      }
-      if (response.status === 402) {
-        setShowPaywall(true);
-        return;
-      }
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || t.upload.icsError);
-      }
-      const ics = await response.text();
-      setExportedIcs(ics);
-      downloadIcsFile(ics);
-      setExportSuccessOpen(true);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : t.upload.icsError);
-    }
-  }
-
   function handleDownload() {
-    // The backend confirms eligibility even when the display snapshot is unavailable.
-    void exportCalendar();
+    void calendarExport.flow.start(courses);
   }
 
   const lastCheckoutProvider = useRef<PaymentProvider>("ecpay");
@@ -588,6 +541,7 @@ function ScheduleUploadScreen() {
         </button>
       </div>
 
+      <CalendarExportStatus flow={calendarExport.flow} courses={courses} />
       {courses.length === 0 ? (
         <button
           type="button"
@@ -668,11 +622,10 @@ function ScheduleUploadScreen() {
         />
       ) : null}
 
-      {exportSuccessOpen ? (
+      {calendarExport.state.open && calendarExport.state.result ? (
         <ExportSuccessModal
-          courses={courses}
-          ics={exportedIcs}
-          onClose={() => setExportSuccessOpen(false)}
+          flow={calendarExport.flow}
+          previousVersion={!calendarExport.flow.matches(courses)}
         />
       ) : null}
 

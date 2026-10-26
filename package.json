@@ -19,7 +19,9 @@
     "test:recognition-batch": "node --test tests/recognition-batch.test.cjs",
     "test:recognition-batch:browser": "node tests/browser/recognition-batch.cjs",
     "test:course-time": "node --test tests/course-time.test.cjs",
-    "test:course-time:browser": "node tests/browser/course-time.cjs"
+    "test:course-time:browser": "node tests/browser/course-time.cjs",
+    "test:calendar-export": "node --test tests/calendar-export.test.cjs",
+    "test:calendar-export:browser": "node tests/browser/calendar-export.cjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

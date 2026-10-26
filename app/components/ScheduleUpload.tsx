@@ -14,6 +14,7 @@ import {
 import { getSampleCourses, localizeSampleCourses } from "@/lib/sampleSchedule";
 import CheckoutRecovery, { useCheckoutRecovery } from "./CheckoutRecovery";
 import type { PaymentProvider } from "@/lib/checkout-recovery";
+import { useEntitlements, EntitlementStatus } from "./EntitlementDisplay";
 import AccountActivity from "./AccountActivity";
 import ExportSuccessModal from "./ExportSuccessModal";
 import ScheduleCropModal from "./ScheduleCropModal";
@@ -27,7 +28,6 @@ const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const TOKEN_HEADER = "x-cc-token";
 const STORAGE_KEY = "cc_entitlement_token";
 const OPEN_PAYWALL_EVENT = "cc-open-paywall";
-const USAGE_UPDATED_EVENT = "cc-usage-updated";
 const CURRENCY_EVENT = "cc-dev-currency";
 const CURRENCY_KEY = "cc_dev_currency";
 
@@ -35,19 +35,6 @@ type PreviewFile = {
   id: string;
   file: File;
   previewUrl: string;
-};
-
-type Usage = {
-  userId?: string;
-  stripeCheckoutEnabled?: boolean;
-  paid: boolean;
-  parseCount: number;
-  gpt4oCount: number;
-  gpt4oRemaining: number;
-  freeScansRemaining?: number;
-  canExportIcs: boolean;
-  model: string;
-  token?: string;
 };
 
 function formatBytes(bytes: number) {
@@ -66,12 +53,6 @@ function downloadIcsFile(ics: string, filename = "course-schedule.ics") {
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
-}
-
-function persistUsage(usage: Usage) {
-  if (usage.token && typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, usage.token);
-  }
 }
 
 function EmphasizedText({ text }: { text: string }) {
@@ -113,7 +94,8 @@ function ScheduleUploadScreen() {
   const [calendarKey, setCalendarKey] = useState(0);
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usage, setUsage] = useState<Usage | null>(null);
+  const { state: entitlement, store: entitlementStore } = useEntitlements();
+  const usage = entitlement.snapshot;
   const { t, locale } = useI18n();
   const { status, data: session } = useSession();
   const signedIn = status === "authenticated";
@@ -165,17 +147,8 @@ function ScheduleUploadScreen() {
     setCourses(getSampleCourses(locale));
   }
 
-  const applyUsage = useCallback((next: Usage) => {
-    persistUsage(next);
-    setUsage(next);
-    window.dispatchEvent(new CustomEvent(USAGE_UPDATED_EVENT));
-  }, []);
-
-  const checkout = useCheckoutRecovery(accountId, (next) =>
-    applyUsage(next as Usage),
-  );
+  const checkout = useCheckoutRecovery(accountId);
   const checkoutTarget = checkout.state.starting;
-  const checkoutFlow = checkout.flow;
 
   useEffect(() => {
     if (!redeemNotice) return;
@@ -190,23 +163,6 @@ function ScheduleUploadScreen() {
     window.addEventListener(OPEN_PAYWALL_EVENT, onOpenPaywall);
     return () => window.removeEventListener(OPEN_PAYWALL_EVENT, onOpenPaywall);
   }, []);
-
-  useEffect(() => {
-    function onUsage(event: Event) {
-      const detail = (event as CustomEvent<Usage>).detail;
-      if (
-        !detail ||
-        typeof detail.paid !== "boolean" ||
-        detail.userId !== (session?.user?.id || session?.user?.email)
-      )
-        return;
-      persistUsage(detail);
-      setUsage(detail);
-      if (detail.paid) setShowPaywall(false);
-    }
-    window.addEventListener(USAGE_UPDATED_EVENT, onUsage);
-    return () => window.removeEventListener(USAGE_UPDATED_EVENT, onUsage);
-  }, [session?.user?.id, session?.user?.email]);
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
@@ -226,43 +182,6 @@ function ScheduleUploadScreen() {
     window.addEventListener(CURRENCY_EVENT, onCurrency);
     return () => window.removeEventListener(CURRENCY_EVENT, onCurrency);
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    parseRequestId.current += 1;
-
-    async function loadUsage() {
-      try {
-        const response = await fetch("/api/user/usage", {
-          headers: authHeaders(),
-        });
-        const data = (await response.json()) as Usage;
-        if (response.ok) {
-          if (!cancelled && checkoutFlow.current?.state().payment !== "paid")
-            applyUsage(data);
-        } else if (!cancelled) setError("暫時無法驗證帳號權益，請稍後重試。");
-      } catch {
-        if (!cancelled) setError("暫時無法驗證帳號權益，請稍後重試。");
-      }
-    }
-
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setUsage(null);
-      setCourses([]);
-      setIsParsing(false);
-      if (status === "authenticated") void loadUsage();
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    applyUsage,
-    status,
-    session?.user?.id,
-    session?.user?.email,
-    checkoutFlow,
-  ]);
 
   const parseFiles = useCallback(
     async (images: File[]) => {
@@ -298,18 +217,30 @@ function ScheduleUploadScreen() {
           }
           if (requestId !== parseRequestId.current) return;
           formData.append("jobId", jobId);
-          const response = await fetch("/api/parse-schedule", {
-            method: "POST",
-            body: formData,
-            headers: authHeaders(),
-          });
-          const data = (await response.json()) as {
+          const operation = entitlementStore.beginOperation();
+          let response: Response;
+          let data: {
             courses?: Course[];
             error?: string;
-            usage?: Usage;
+            usage?: unknown;
             requiresAuth?: boolean;
             requiresPayment?: boolean;
           };
+          try {
+            response = await fetch("/api/parse-schedule", {
+              method: "POST",
+              body: formData,
+              headers: authHeaders(),
+            });
+            data = await response.json();
+          } catch (error) {
+            void operation.finish(undefined, 0);
+            throw error;
+          }
+          void operation.finish(
+            data.usage,
+            data.requiresAuth ? 401 : response.status,
+          );
           if (requestId !== parseRequestId.current) return;
           if (response.status === 202) {
             throw new Error(
@@ -328,7 +259,6 @@ function ScheduleUploadScreen() {
             return;
           }
           if (response.status === 402 || data.requiresPayment) {
-            if (data.usage) applyUsage(data.usage);
             setShowPaywall(true);
             throw new Error(data.error || t.upload.parseFailed);
           }
@@ -352,7 +282,6 @@ function ScheduleUploadScreen() {
             }
             throw new Error(data.error || t.upload.parseFailed);
           }
-          if (data.usage) applyUsage(data.usage);
           nextCourses.push(
             ...(data.courses ?? []).map((course) => ({
               ...course,
@@ -376,7 +305,7 @@ function ScheduleUploadScreen() {
         }
       }
     },
-    [applyUsage, t.upload.parseFailed, accountId],
+    [entitlementStore, t.upload.parseFailed, accountId],
   );
 
   const addFiles = useCallback(
@@ -459,6 +388,7 @@ function ScheduleUploadScreen() {
         body: JSON.stringify({ courses }),
       });
       if (response.status === 401) {
+        entitlementStore.requireSignIn();
         await signIn("google", { callbackUrl: "/#upload" });
         return;
       }
@@ -480,12 +410,7 @@ function ScheduleUploadScreen() {
   }
 
   function handleDownload() {
-    if (usage?.paid !== true) {
-      setShowPromoInput(false);
-      setPromoError(null);
-      setShowPaywall(true);
-      return;
-    }
+    // The backend confirms eligibility even when the display snapshot is unavailable.
     void exportCalendar();
   }
 
@@ -520,21 +445,24 @@ function ScheduleUploadScreen() {
     }
     setPromoLoading(true);
     setPromoError(null);
+    const operation = entitlementStore.beginOperation();
     try {
       const response = await fetch("/api/coupon/redeem", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ code: promoCode, site_id: "course-copilot" }),
       });
-      const data = (await response.json().catch(() => null)) as
-        | (Usage & {
-            error?: string;
-            message?: string;
-            requiresAuth?: boolean;
-            isPaid?: boolean;
-            usage?: Usage;
-          })
-        | null;
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: string;
+        requiresAuth?: boolean;
+        redeemed?: boolean;
+        isPaid?: boolean;
+      } | null;
+      void operation.finish(
+        response.ok ? (data ?? undefined) : undefined,
+        data?.requiresAuth ? 401 : response.status,
+      );
       if (
         response.status === 401 ||
         data?.requiresAuth ||
@@ -543,19 +471,10 @@ function ScheduleUploadScreen() {
         setPromoError("請先登入 Google 帳號後再進行兌換");
         return;
       }
-      const paid =
-        data?.paid === true ||
-        data?.isPaid === true ||
-        data?.usage?.paid === true;
-      if (!response.ok || !data || !paid) {
+      if (!response.ok || !data || !(data.redeemed || data.isPaid)) {
         setPromoError(data?.message || promoFailureMessage(data?.error));
         return;
       }
-      persistUsage(data);
-      setUsage(data);
-      window.dispatchEvent(
-        new CustomEvent(USAGE_UPDATED_EVENT, { detail: data }),
-      );
       setPromoCode("");
       setShowPromoInput(false);
       setShowPaywall(false);
@@ -565,6 +484,7 @@ function ScheduleUploadScreen() {
     } catch {
       setPromoError(promoFailureMessage("unavailable"));
     } finally {
+      void operation.finish(undefined, 0);
       setPromoLoading(false);
     }
   }
@@ -586,6 +506,14 @@ function ScheduleUploadScreen() {
       className="mx-auto w-full max-w-6xl scroll-mt-24"
       aria-labelledby="upload-heading"
     >
+      <EntitlementStatus />
+      {usage ? (
+        <p aria-label="帳號權益摘要" className="mb-3 text-sm text-stone-600">
+          {locale.startsWith("zh")
+            ? `免費 ${usage.freeRemaining} 次 · 購買／兌換 ${usage.creditRemaining} 次 · 共 ${usage.totalRemaining} 次 · ${usage.canExport ? "可匯出行事曆" : "尚無匯出資格"}`
+            : `Free ${usage.freeRemaining} · Purchased/redeemed ${usage.creditRemaining} · Total ${usage.totalRemaining} · ${usage.canExport ? "Calendar export unlocked" : "Calendar export locked"}`}
+        </p>
+      ) : null}
       <>
         {checkout.state.problem === "save" ? (
           <div className="flex gap-4 text-sm">
@@ -798,17 +726,21 @@ function ScheduleUploadScreen() {
                   type="button"
                   onClick={() => void handleDownload()}
                   className={`inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium ${
-                    usage?.paid === true
+                    usage?.canExport === true
                       ? "bg-indigo-600 text-white hover:bg-indigo-500"
                       : "bg-stone-200 text-stone-500"
                   }`}
                 >
-                  {usage?.paid === true ? (
+                  {usage?.canExport === true ? (
                     t.upload.download
                   ) : (
                     <>
                       <span aria-hidden>🔒</span>
-                      {t.upload.downloadLocked}
+                      {entitlement.status === "ready"
+                        ? t.upload.downloadLocked
+                        : locale.startsWith("zh")
+                          ? "確認資格並下載"
+                          : "Verify eligibility and download"}
                     </>
                   )}
                 </button>
@@ -819,12 +751,8 @@ function ScheduleUploadScreen() {
                 <EmphasizedText text={t.upload.weeklyHint} />
               </p>
               <p className="mt-1 text-sm font-semibold text-amber-600">
-                {usage?.paid
-                  ? withPrice(
-                      t.upload.planPaid(
-                        usage.gpt4oRemaining + (usage.freeScansRemaining ?? 0),
-                      ),
-                    )
+                {usage?.canExport
+                  ? withPrice(t.upload.planPaid(usage.totalRemaining))
                   : withPrice(t.upload.planFree)}
               </p>
             </div>

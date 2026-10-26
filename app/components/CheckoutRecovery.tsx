@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useEntitlements } from "./EntitlementDisplay";
 import { signIn } from "next-auth/react";
 import { createBrowserCheckout } from "@/lib/checkout-browser";
 import type {
@@ -11,10 +12,7 @@ import type {
 import type { Course } from "@/lib/types";
 
 type Flow = ReturnType<typeof createBrowserCheckout>;
-export function useCheckoutRecovery(
-  accountId: string,
-  applyUsage: (usage: Record<string, unknown>) => void,
-) {
+export function useCheckoutRecovery(accountId: string) {
   const flow = useRef<Flow | null>(null);
   const [state, setState] = useState<CheckoutState>({
     payment: "idle",
@@ -22,25 +20,30 @@ export function useCheckoutRecovery(
     problem: null,
   });
   const [drafts, setDrafts] = useState<CheckoutDraft[]>([]);
-  const usageCallback = useRef(applyUsage);
+  const { store: entitlementStore } = useEntitlements();
   const refreshRef = useRef<() => void>(() => {});
   useEffect(() => {
-    usageCallback.current = applyUsage;
-  }, [applyUsage]);
-  useEffect(() => {
     let active = true;
-    let lastUsage: Record<string, unknown> | undefined;
+    let operation:
+      ReturnType<typeof entitlementStore.beginOperation> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const controller = createBrowserCheckout(accountId, (next) => {
       if (!active) return;
       setState(next);
-      if (
-        next.usage &&
-        next.usage !== lastUsage &&
-        next.usage.userId === accountId
-      ) {
-        lastUsage = next.usage;
-        usageCallback.current(next.usage);
+      if (next.payment === "checking" && !operation)
+        operation = entitlementStore.beginOperation();
+      if (operation && next.payment !== "checking") {
+        void operation.finish(
+          next.usage,
+          next.payment === "sign-in"
+            ? 401
+            : next.payment === "wrong-account"
+              ? 403
+              : next.payment === "unavailable"
+                ? 0
+                : 200,
+        );
+        operation = undefined;
       }
     });
     flow.current = controller;
@@ -66,12 +69,13 @@ export function useCheckoutRecovery(
     return () => {
       active = false;
       controller.dispose();
+      void operation?.finish(undefined, 0);
       if (flow.current === controller) flow.current = null;
       clearTimeout(timer);
       window.removeEventListener("storage", refresh);
       window.removeEventListener("focus", refresh);
     };
-  }, [accountId]);
+  }, [accountId, entitlementStore]);
   async function start(
     provider: PaymentProvider,
     courses: Course[],

@@ -1,21 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useEntitlements, EntitlementStatus } from "./EntitlementDisplay";
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { LOCALES, useI18n, type Dictionary, type Locale } from "@/lib/i18n";
 
-const TOKEN_HEADER = "x-cc-token";
-const STORAGE_KEY = "cc_entitlement_token";
 const OPEN_PAYWALL_EVENT = "cc-open-paywall";
-const USAGE_UPDATED_EVENT = "cc-usage-updated";
-
-type CreditUsage = {
-  userId?: string;
-  paid: boolean;
-  gpt4oRemaining: number;
-  freeScansRemaining?: number;
-};
 
 type CreditBadge = {
   mode: "paid" | "free" | "guest";
@@ -227,7 +218,14 @@ export default function TopNav() {
   const { t, locale, setLocale } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const signedIn = status === "authenticated";
-  const [credits, setCredits] = useState<CreditBadge | null>(null);
+  const { state: entitlement } = useEntitlements();
+  const snapshot = entitlement.snapshot;
+  const credits: CreditBadge | null = snapshot
+    ? {
+        mode: snapshot.canExport ? "paid" : "free",
+        count: snapshot.totalRemaining,
+      }
+    : null;
   const displayName = session?.user?.name || session?.user?.email || "U";
   const creditLabel = credits ? creditText(t, credits) : "";
 
@@ -236,62 +234,6 @@ export default function TopNav() {
     { href: "/#upload", label: t.nav.upload },
     { href: "/#how-it-works", label: t.nav.howItWorks },
   ];
-
-  useEffect(() => {
-    if (status === "loading") return;
-    if (status === "unauthenticated") {
-      queueMicrotask(() => setCredits({ mode: "guest", count: 0 }));
-      return;
-    }
-    let cancelled = false;
-
-    async function loadCredits() {
-      try {
-        const token = window.localStorage.getItem(STORAGE_KEY);
-        const headers: HeadersInit = token ? { [TOKEN_HEADER]: token } : {};
-        const response = await fetch("/api/user/usage", { headers });
-        if (!response.ok) {
-          if (!cancelled) setCredits(null);
-          return;
-        }
-        const data = (await response.json()) as CreditUsage;
-        if (!cancelled) applyCreditData(data);
-      } catch {
-        if (!cancelled) setCredits(null);
-      }
-    }
-
-    function applyCreditData(data: CreditUsage) {
-      if (data.paid) {
-        setCredits({
-          mode: "paid",
-          count: data.gpt4oRemaining + (data.freeScansRemaining ?? 0),
-        });
-      } else if (status === "authenticated") {
-        setCredits({ mode: "free", count: data.freeScansRemaining ?? 0 });
-      } else {
-        queueMicrotask(() => setCredits({ mode: "guest", count: 0 }));
-      }
-    }
-
-    function onUsage(event: Event) {
-      const detail = (event as CustomEvent<CreditUsage>).detail;
-      if (detail && typeof detail.paid === "boolean") {
-        if (detail.userId !== (session?.user?.id || session?.user?.email))
-          return;
-        applyCreditData(detail);
-        return;
-      }
-      void loadCredits();
-    }
-
-    void loadCredits();
-    window.addEventListener(USAGE_UPDATED_EVENT, onUsage);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(USAGE_UPDATED_EVENT, onUsage);
-    };
-  }, [status, session?.user?.id, session?.user?.email]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -315,11 +257,7 @@ export default function TopNav() {
 
   function renderCreditControl(compact: boolean) {
     if (credits === null) {
-      return (
-        <div
-          className={`h-9 shrink-0 animate-pulse rounded-full bg-blue-50 ${compact ? "w-14" : "w-28"}`}
-        />
-      );
+      return <EntitlementStatus compact />;
     }
     return (
       <button
@@ -335,6 +273,7 @@ export default function TopNav() {
         ) : (
           <span className="truncate whitespace-nowrap">{creditLabel}</span>
         )}
+        <EntitlementStatus compact />
       </button>
     );
   }

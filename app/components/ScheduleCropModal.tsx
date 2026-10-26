@@ -17,6 +17,11 @@ export default function ScheduleCropModal({
   busy,
   onConfirm,
   onSkip,
+  error,
+  onDiscard,
+  onCancel,
+  discardLabel,
+  cancelLabel,
 }: {
   file: File;
   title: string;
@@ -26,6 +31,11 @@ export default function ScheduleCropModal({
   busy: boolean;
   onConfirm: (crop: PercentCrop, image: HTMLImageElement) => void;
   onSkip: () => void;
+  error?: string | null;
+  onDiscard: () => void;
+  onCancel: () => void;
+  discardLabel: string;
+  cancelLabel: string;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [crop, setCrop] = useState<PercentCrop>(initialCrop);
@@ -33,10 +43,18 @@ export default function ScheduleCropModal({
 
   useEffect(() => {
     const next = URL.createObjectURL(file);
-    setUrl(next);
-    setCrop(initialCrop());
-    setImage(null);
-    return () => URL.revokeObjectURL(next);
+    let active = true;
+    queueMicrotask(() => {
+      if (active) {
+        setUrl(next);
+        setCrop(initialCrop());
+        setImage(null);
+      }
+    });
+    return () => {
+      active = false;
+      URL.revokeObjectURL(next);
+    };
   }, [file]);
 
   return (
@@ -74,7 +92,28 @@ export default function ScheduleCropModal({
             </ReactCrop>
           ) : null}
         </div>
+        {error && (
+          <p role="alert" className="px-5 py-2 text-sm text-red-600">
+            {error}
+          </p>
+        )}
         <div className="flex flex-col-reverse gap-2 border-t border-stone-200 px-5 py-4 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onCancel}
+            className="px-3 py-2 text-sm underline"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onDiscard}
+            className="px-3 py-2 text-sm underline"
+          >
+            {discardLabel}
+          </button>
           <button
             type="button"
             disabled={busy}

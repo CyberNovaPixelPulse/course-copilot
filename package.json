@@ -15,7 +15,9 @@
     "test:checkout": "node --test tests/checkout-recovery.test.cjs",
     "test:checkout:browser": "node tests/browser/checkout-recovery.cjs",
     "test:entitlement-display": "node --test tests/entitlement-display.test.cjs",
-    "test:entitlement-display:browser": "node tests/browser/entitlement-display.cjs"
+    "test:entitlement-display:browser": "node tests/browser/entitlement-display.cjs",
+    "test:recognition-batch": "node --test tests/recognition-batch.test.cjs",
+    "test:recognition-batch:browser": "node tests/browser/recognition-batch.cjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

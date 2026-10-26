@@ -15,6 +15,7 @@ import { getSampleCourses, localizeSampleCourses } from "@/lib/sampleSchedule";
 import CheckoutRecovery, { useCheckoutRecovery } from "./CheckoutRecovery";
 import type { PaymentProvider } from "@/lib/checkout-recovery";
 import { useEntitlements, EntitlementStatus } from "./EntitlementDisplay";
+import RecognitionBatch, { useRecognitionBatch } from "./RecognitionBatch";
 import AccountActivity from "./AccountActivity";
 import ExportSuccessModal from "./ExportSuccessModal";
 import ScheduleCropModal from "./ScheduleCropModal";
@@ -92,7 +93,6 @@ function ScheduleUploadScreen() {
   const [files, setFiles] = useState<PreviewFile[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [calendarKey, setCalendarKey] = useState(0);
-  const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { state: entitlement, store: entitlementStore } = useEntitlements();
   const usage = entitlement.snapshot;
@@ -100,6 +100,8 @@ function ScheduleUploadScreen() {
   const { status, data: session } = useSession();
   const signedIn = status === "authenticated";
   const accountId = session?.user?.id || session?.user?.email || "";
+  const batch = useRecognitionBatch(accountId);
+  const isParsing = batch.state.phase === "running";
   const [showPaywall, setShowPaywall] = useState(false);
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoCode, setPromoCode] = useState("");
@@ -110,14 +112,16 @@ function ScheduleUploadScreen() {
   const [currencyOverride, setCurrencyOverride] = useState<CurrencyCode | null>(
     null,
   );
-  const [cropQueue, setCropQueue] = useState<File[]>([]);
+  const [cropQueue, setCropQueue] = useState<{ id: string; file: File }[]>([]);
   const [exportSuccessOpen, setExportSuccessOpen] = useState(false);
   const [exportedIcs, setExportedIcs] = useState("");
   const [addCourseOpen, setAddCourseOpen] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
-  const preparedBatch = useRef<File[]>([]);
-
-  const parseRequestId = useRef(0);
+  const previews = useRef<string[]>([]);
+  useEffect(
+    () => () => previews.current.forEach((url) => URL.revokeObjectURL(url)),
+    [],
+  );
 
   useEffect(() => {
     if (!scrollToCalendar.current || courses.length === 0) return;
@@ -183,149 +187,28 @@ function ScheduleUploadScreen() {
     return () => window.removeEventListener(CURRENCY_EVENT, onCurrency);
   }, []);
 
-  const parseFiles = useCallback(
-    async (images: File[]) => {
-      if (images.length === 0) return;
-
-      const requestId = ++parseRequestId.current;
-      showingSample.current = false;
-      setCalendarKey((key) => key + 1);
-      setCourses([]);
-      setExportSuccessOpen(false);
-      setIsParsing(true);
-      setError(null);
-
-      try {
-        const nextCourses: Course[] = [];
-        for (const image of images) {
-          const formData = new FormData();
-          formData.append("image", image);
-          const fingerprint = Array.from(
-            new Uint8Array(
-              await crypto.subtle.digest("SHA-256", await image.arrayBuffer()),
-            ),
-          )
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
-          const pendingKey = `cc_pending_job:${accountId}:${fingerprint}`;
-          // Keep uncertain submissions across reloads. Only a confirmed terminal
-          // response removes this reference, allowing a deliberate new attempt.
-          let jobId = window.localStorage.getItem(pendingKey);
-          if (!jobId) {
-            jobId = crypto.randomUUID();
-            window.localStorage.setItem(pendingKey, jobId);
-          }
-          if (requestId !== parseRequestId.current) return;
-          formData.append("jobId", jobId);
-          const operation = entitlementStore.beginOperation();
-          let response: Response;
-          let data: {
-            courses?: Course[];
-            error?: string;
-            usage?: unknown;
-            requiresAuth?: boolean;
-            requiresPayment?: boolean;
-          };
-          try {
-            response = await fetch("/api/parse-schedule", {
-              method: "POST",
-              body: formData,
-              headers: authHeaders(),
-            });
-            data = await response.json();
-          } catch (error) {
-            void operation.finish(undefined, 0);
-            throw error;
-          }
-          void operation.finish(
-            data.usage,
-            data.requiresAuth ? 401 : response.status,
-          );
-          if (requestId !== parseRequestId.current) return;
-          if (response.status === 202) {
-            throw new Error(
-              "此工作仍在辨識中，請從最近辨識查看結果，無須重新送出。",
-            );
-          }
-          if (
-            response.ok ||
-            response.status === 409 ||
-            response.status === 422 ||
-            response.status === 402
-          )
-            window.localStorage.removeItem(pendingKey);
-          if (response.status === 401 || data.requiresAuth) {
-            await signIn("google", { callbackUrl: "/#upload" });
-            return;
-          }
-          if (response.status === 402 || data.requiresPayment) {
-            setShowPaywall(true);
-            throw new Error(data.error || t.upload.parseFailed);
-          }
-          if (!response.ok) {
-            if (![409, 422, 402].includes(response.status)) {
-              try {
-                const check = await fetch(
-                  `/api/recognition/jobs?id=${encodeURIComponent(jobId)}`,
-                );
-                if (check.ok) {
-                  const saved = await check.json();
-                  if (
-                    saved.jobs?.[0]?.state === "failed" ||
-                    saved.jobs?.[0]?.state === "expired"
-                  )
-                    window.localStorage.removeItem(pendingKey);
-                }
-              } catch {
-                /* Keep the concrete failure and uncertain job reference. */
-              }
-            }
-            throw new Error(data.error || t.upload.parseFailed);
-          }
-          nextCourses.push(
-            ...(data.courses ?? []).map((course) => ({
-              ...course,
-              slots: course.slots || [],
-            })),
-          );
-        }
-        if (requestId !== parseRequestId.current) return;
-        setCourses(nextCourses);
-      } catch (parseError) {
-        if (requestId !== parseRequestId.current) return;
-        setCourses([]);
-        setError(
-          parseError instanceof Error
-            ? parseError.message
-            : t.upload.parseFailed,
-        );
-      } finally {
-        if (requestId === parseRequestId.current) {
-          setIsParsing(false);
-        }
-      }
-    },
-    [entitlementStore, t.upload.parseFailed, accountId],
-  );
-
   const addFiles = useCallback(
     (fileList: FileList | File[]) => {
-      const incoming = Array.from(fileList);
-      const valid = incoming.filter((file) =>
+      const valid = Array.from(fileList).filter((file) =>
         ACCEPTED_TYPES.includes(file.type),
       );
-
-      if (valid.length === 0) {
+      if (!valid.length) {
         setError(t.upload.invalidType);
         return;
       }
-
+      if (!batch.flow.open(valid.map((file) => file.name))) {
+        setError("請先完成或結束目前辨識批次，新圖片尚未加入。");
+        return;
+      }
+      previews.current.forEach((url) => URL.revokeObjectURL(url));
+      previews.current = [];
+      setFiles([]);
       setError(null);
-      setCropQueue((current) => [...current, ...valid]);
+      const items = batch.flow.getSnapshot().items;
+      setCropQueue(valid.map((file, index) => ({ id: items[index].id, file })));
     },
-    [t.upload.invalidType],
+    [batch.flow, t.upload.invalidType],
   );
-
   async function acceptCrop(source: PixelRect | null) {
     const current = cropQueue[0];
     if (!current || isCompressing) return;
@@ -333,29 +216,42 @@ function ScheduleUploadScreen() {
     setError(null);
     try {
       const compressed = await compressScheduleImage(
-        current,
+        current.file,
         source ?? undefined,
       );
-      preparedBatch.current.push(compressed);
+      // A finished or replaced batch must not accept a late preparation result.
+      if (!batch.flow.getSnapshot().items.some((i) => i.id === current.id))
+        return;
+      batch.flow.prepared(current.id, compressed);
+      const previewUrl = URL.createObjectURL(compressed);
+      previews.current.push(previewUrl);
+      setFiles((existing) => [
+        ...existing,
+        { id: current.id, file: compressed, previewUrl },
+      ]);
+      const rest = cropQueue.slice(1);
+      setCropQueue(rest);
+      if (!rest.length) void batch.flow.continue();
     } catch {
-      setError(t.upload.parseFailed);
+      batch.flow.preparationFailed(current.id);
+      setError("圖片準備失敗，尚未送出。請重試、略過這張或取消這批。");
     } finally {
       setIsCompressing(false);
     }
+  }
+  function discardPreparation() {
+    const current = cropQueue[0];
+    if (!current || isCompressing) return;
+    batch.flow.skip(current.id);
+    setError(null);
     const rest = cropQueue.slice(1);
     setCropQueue(rest);
-    if (rest.length > 0) return;
-    const batch = preparedBatch.current.splice(0);
-    if (batch.length === 0) return;
-    setFiles((existing) => [
-      ...existing,
-      ...batch.map((file) => ({
-        id: `${file.name}-${file.size}-${crypto.randomUUID()}`,
-        file,
-        previewUrl: URL.createObjectURL(file),
-      })),
-    ]);
-    void parseFiles(batch);
+    if (!rest.length) void batch.flow.continue();
+  }
+  function endPreparation() {
+    batch.flow.end();
+    setCropQueue([]);
+    setError(null);
   }
 
   function onDrop(event: React.DragEvent<HTMLDivElement>) {
@@ -364,19 +260,6 @@ function ScheduleUploadScreen() {
     if (event.dataTransfer.files.length) {
       addFiles(event.dataTransfer.files);
     }
-  }
-
-  function removeFile(id: string) {
-    setFiles((current) => {
-      const target = current.find((file) => file.id === id);
-      if (target) URL.revokeObjectURL(target.previewUrl);
-      const remaining = current.filter((file) => file.id !== id);
-      if (remaining.length === 0) {
-        showingSample.current = false;
-        setCourses([]);
-      }
-      return remaining;
-    });
   }
 
   async function exportCalendar() {
@@ -490,9 +373,7 @@ function ScheduleUploadScreen() {
   }
 
   function restoreSchedule(restored: Course[]) {
-    parseRequestId.current += 1;
     showingSample.current = false;
-    setIsParsing(false);
     setCourses(restored);
     setCalendarKey((current) => current + 1);
   }
@@ -567,6 +448,24 @@ function ScheduleUploadScreen() {
         </div>
       ) : null}
 
+      <p className="my-3 text-sm text-stone-500">
+        {locale.startsWith("zh")
+          ? "圖片與整批進度僅保留在此頁。重整後需重新選圖；已成功的單張結果可從最近辨識取回（7 天內）。"
+          : "Images and batch progress stay in this page only. Reselect after reload; successful jobs remain in recent recognition for seven days."}
+      </p>
+      <RecognitionBatch
+        batch={batch}
+        courses={courses}
+        locale={locale}
+        onLoad={restoreSchedule}
+        onEnd={() => {
+          setCropQueue([]);
+          setFiles([]);
+          setError(null);
+          previews.current.forEach((url) => URL.revokeObjectURL(url));
+          previews.current = [];
+        }}
+      />
       <div
         onDragOver={(event) => {
           event.preventDefault();
@@ -660,36 +559,10 @@ function ScheduleUploadScreen() {
                       {formatBytes(file.file.size)}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => removeFile(file.id)}
-                    disabled={isParsing}
-                    className="shrink-0 rounded-full px-2 py-1 text-xs text-stone-500 hover:bg-white hover:text-stone-800 disabled:opacity-50"
-                  >
-                    {t.upload.remove}
-                  </button>
                 </div>
               </li>
             ))}
           </ul>
-        ) : null}
-
-        {files.length > 0 && !isParsing && courses.length === 0 && !error ? (
-          <p className="mt-4 text-center text-sm text-stone-500">
-            {t.upload.empty}
-          </p>
-        ) : null}
-
-        {files.length > 0 && !isParsing ? (
-          <div className="mt-4 flex justify-center">
-            <button
-              type="button"
-              onClick={() => void parseFiles(files.map((item) => item.file))}
-              className="rounded-full border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
-            >
-              {t.upload.parseAgain}
-            </button>
-          </div>
         ) : null}
       </div>
 
@@ -785,7 +658,14 @@ function ScheduleUploadScreen() {
 
       {cropQueue[0] ? (
         <ScheduleCropModal
-          file={cropQueue[0]}
+          file={cropQueue[0].file}
+          error={error}
+          onDiscard={discardPreparation}
+          onCancel={endPreparation}
+          discardLabel={
+            locale.startsWith("zh") ? "略過這張圖片" : "Skip this image"
+          }
+          cancelLabel={locale.startsWith("zh") ? "取消這批" : "Cancel batch"}
           title={t.upload.cropTitle ?? "Crop the schedule"}
           hint={
             t.upload.cropHint ??

@@ -1,5 +1,7 @@
 # 課表辨識 module 設計共識
 
+現行結案決定（2026-10-27）：使用者接受目前效果，要求 #9 與 #2 完成關票。以已知星期錯置及真圖案例覆蓋不足的限制結案，未部署；詳見 experiments/schedule-recognition/results/acceptance-closeout.md。下文保留原設計／計畫，原本要求補齊代表性真圖的門檻已由本次結案決定調整。
+
 狀態：Q1–Q15 及完整設計共識已於 2026-10-26 確認，規格已發布至 [GitHub Issue #2](https://github.com/CyberNovaPixelPulse/course-copilot/issues/2)，標記 ready-for-agent。對應 #3–#8 的本機工程實作已加入；#9 真實圖片驗收尚未執行，沒有呼叫實際模型或部署。
 
 ## 目標與責任

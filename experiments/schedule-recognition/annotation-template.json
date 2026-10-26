@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "template_only": true,
+  "status": "awaiting_samples_and_approval",
+  "proposed_max_calls": 8,
+  "approved_max_calls": null,
+  "samples": [
+    {
+      "id": "replace-with-sample-id",
+      "image_path": null,
+      "sha256": null,
+      "source_kind": null,
+      "scenario_tags": ["normal-five-columns"],
+      "human_reviewed": false,
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "manual_meetings": [
+        {
+          "name": "待人工填入",
+          "weekday": "Monday",
+          "periods": ["C", "D"],
+          "professor": "",
+          "location": "待人工填入"
+        }
+      ],
+      "expected": {
+        "outcome": "success",
+        "courses": [
+          {
+            "name": "待人工填入",
+            "professor": "",
+            "slots": [
+              {
+                "weekday": "Monday",
+                "startTime": "10:15",
+                "endTime": "13:00",
+                "location": "待人工填入"
+              }
+            ]
+          }
+        ],
+        "failure_code": null,
+        "reason": "僅為 C、D 同教室連續節次的格式示例，不是已核准答案"
+      }
+    }
+  ]
+}

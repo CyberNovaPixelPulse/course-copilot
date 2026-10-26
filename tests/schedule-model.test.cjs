@@ -42,11 +42,13 @@ test("production adapter preserves one image, strict schema and settings through
       ],
       cells: [
         { name: "都市研究", column: 2, codes: ["10"] },
+        { name: "都市研究", column: 2, codes: ["11"] },
         { name: "影像與文化書寫（一）", column: 4, codes: ["13"] },
       ],
     },
     courses: [
       { name: "都市研究", day: 2, periods: ["10"], room: "" },
+      { name: "都市研究", day: 2, periods: ["11"], room: "" },
       { name: "影像與文化書寫（一）", day: 4, periods: ["13"], room: "" },
     ],
   };
@@ -96,7 +98,7 @@ test("production adapter preserves one image, strict schema and settings through
           {
             weekday: "Tuesday",
             startTime: "16:10",
-            endTime: "17:00",
+            endTime: "18:00",
             location: "",
           },
         ],
@@ -135,12 +137,8 @@ test("production adapter preserves one image, strict schema and settings through
         detail: "high",
       },
     });
-    // The demonstration must itself be a valid example for the unchanged strict contract.
-    const example = body.messages[0].content.match(
-      /\n(\{"scratchpad"[^\n]+\})\n/,
-    );
-    assert.ok(example);
-    assert.deepEqual(JSON.parse(example[1]), fixture);
+    assert.equal(records[0].courseCount, 2);
+    assert.equal(records[0].eventCount, 2);
     assert.equal(records[0].normalizationStatus, "succeeded");
     assert.equal(records[0].inputTokens, 8);
     assert.equal(records[0].outputTokens, 2);

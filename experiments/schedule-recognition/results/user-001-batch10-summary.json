@@ -1,0 +1,500 @@
+{
+  "sample_id": "user-supplied-001",
+  "authorization": {
+    "additional_max_calls": 10,
+    "stop_at_first_exact_match": true,
+    "attempted_calls": 10,
+    "retries": 0,
+    "stop_reason": "budget_exhausted_no_exact_match"
+  },
+  "earlier_calls": 3,
+  "cumulative_calls": 13,
+  "quality_passed": false,
+  "selected_candidate_round": 5,
+  "selection_reason": "Tied best exact slot count; lowest total observed tokens among tied candidates. One development observation per variant does not prove superiority.",
+  "controls": {
+    "original_sha256": "3a0834b7a39d0710fbf6299511e7cfaa1174184d76fed26239c0713feccd9783",
+    "crop_sha256": "5eee954950554655cc4a15eabbd44f0815efd9ae0f0cb0a6013e11c70d30c7f6",
+    "annotation_sha256": "adb12168c35072382a8447ff0301dce3752dcc345f61e7fa6b9e395eb29be46b",
+    "recognizer_sha256": "24da1da4ea1af78c046e170087c811fb9c7c2dab95239d9814b8cfa936610d12",
+    "configuration": {
+      "model": "gpt-4o",
+      "temperature": 0,
+      "top_p": 1e-06,
+      "seed": 42,
+      "image_detail": "high",
+      "timeout_ms": 45000,
+      "max_retries": 0
+    },
+    "same_image_and_expected": true,
+    "product_db_writes": false,
+    "schema_and_normalization_unchanged": true,
+    "raw_model_response_saved": false
+  },
+  "total_input_tokens": 15523,
+  "total_output_tokens": 10733,
+  "rounds": [
+    {
+      "round": 1,
+      "strategy": "逐列完整計數空白欄，排除左側圖例",
+      "started_at": "2026-10-26T16:28:06.690Z",
+      "finished_at": "2026-10-26T16:28:18.295Z",
+      "adapter_sha256": "4b3544aa18fa910a1ed1763cc0e8f26494fd7686df26501a34c9d056f89f4bed",
+      "base_git_commit": "12b05a9dcdc4328b7b59753c628e42d41fece746",
+      "attempted_calls": 1,
+      "outcome": "success",
+      "failure_code": null,
+      "exact_match": false,
+      "expected_slots": 14,
+      "actual_courses": 11,
+      "actual_slots": 14,
+      "exact_expected_slot_matches": 13,
+      "missing": [
+        {
+          "course_ref": "C06",
+          "weekday": "Tuesday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "unexpected": [
+        {
+          "course_ref": "C06",
+          "weekday": "Monday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "actual_model": "gpt-4o-2024-08-06",
+      "input_tokens": 1722,
+      "output_tokens": 1060,
+      "latency_ms": 11579
+    },
+    {
+      "round": 2,
+      "strategy": "增加無關課名的稀疏列示例",
+      "started_at": "2026-10-26T16:28:35.042Z",
+      "finished_at": "2026-10-26T16:28:46.608Z",
+      "adapter_sha256": "1ae80fa44c83672dea2d1964d35b42778ba021282dfa4f02412ae883ce670f29",
+      "base_git_commit": "12b05a9dcdc4328b7b59753c628e42d41fece746",
+      "attempted_calls": 1,
+      "outcome": "success",
+      "failure_code": null,
+      "exact_match": false,
+      "expected_slots": 14,
+      "actual_courses": 11,
+      "actual_slots": 14,
+      "exact_expected_slot_matches": 11,
+      "missing": [
+        {
+          "course_ref": "C08",
+          "weekday": "Thursday",
+          "startTime": "08:10",
+          "endTime": "10:00",
+          "professor_empty": true,
+          "location_empty": true
+        },
+        {
+          "course_ref": "C02",
+          "weekday": "Thursday",
+          "startTime": "12:10",
+          "endTime": "13:00",
+          "professor_empty": true,
+          "location_empty": true
+        },
+        {
+          "course_ref": "C03",
+          "weekday": "Monday",
+          "startTime": "14:10",
+          "endTime": "16:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "unexpected": [
+        {
+          "course_ref": "unrecognized-name",
+          "weekday": "Thursday",
+          "startTime": "08:10",
+          "endTime": "10:00",
+          "professor_empty": true,
+          "location_empty": true
+        },
+        {
+          "course_ref": "C02",
+          "weekday": "Thursday",
+          "startTime": "10:15",
+          "endTime": "11:30",
+          "professor_empty": true,
+          "location_empty": true
+        },
+        {
+          "course_ref": "C03",
+          "weekday": "Tuesday",
+          "startTime": "14:10",
+          "endTime": "16:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "actual_model": "gpt-4o-2024-08-06",
+      "input_tokens": 1871,
+      "output_tokens": 1064,
+      "latency_ms": 11552
+    },
+    {
+      "round": 3,
+      "strategy": "改用繁體中文逐字抄錄提示",
+      "started_at": "2026-10-26T16:29:11.635Z",
+      "finished_at": "2026-10-26T16:29:21.391Z",
+      "adapter_sha256": "1d92999cb714f8fd23ad1d0401f430d19c717adbc15609b9d74fe50707c66eaf",
+      "base_git_commit": "12b05a9dcdc4328b7b59753c628e42d41fece746",
+      "attempted_calls": 1,
+      "outcome": "success",
+      "failure_code": null,
+      "exact_match": false,
+      "expected_slots": 14,
+      "actual_courses": 10,
+      "actual_slots": 12,
+      "exact_expected_slot_matches": 10,
+      "missing": [
+        {
+          "course_ref": "C08",
+          "weekday": "Thursday",
+          "startTime": "08:10",
+          "endTime": "10:00",
+          "professor_empty": true,
+          "location_empty": true
+        },
+        {
+          "course_ref": "C06",
+          "weekday": "Tuesday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        },
+        {
+          "course_ref": "C02",
+          "weekday": "Wednesday",
+          "startTime": "10:15",
+          "endTime": "11:30",
+          "professor_empty": true,
+          "location_empty": true
+        },
+        {
+          "course_ref": "C10",
+          "weekday": "Thursday",
+          "startTime": "19:10",
+          "endTime": "21:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "unexpected": [
+        {
+          "course_ref": "C08",
+          "weekday": "Friday",
+          "startTime": "08:10",
+          "endTime": "10:00",
+          "professor_empty": true,
+          "location_empty": true
+        },
+        {
+          "course_ref": "C06",
+          "weekday": "Monday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "actual_model": "gpt-4o-2024-08-06",
+      "input_tokens": 1587,
+      "output_tokens": 1051,
+      "latency_ms": 9742
+    },
+    {
+      "round": 4,
+      "strategy": "逐欄遮蔽閱讀與相對格線公式",
+      "started_at": "2026-10-26T16:29:39.099Z",
+      "finished_at": "2026-10-26T16:29:48.449Z",
+      "adapter_sha256": "5f95ea81f92d96647bb671b6e6c967806d189d53760741c50d7f8629ad9810fc",
+      "base_git_commit": "12b05a9dcdc4328b7b59753c628e42d41fece746",
+      "attempted_calls": 1,
+      "outcome": "success",
+      "failure_code": null,
+      "exact_match": false,
+      "expected_slots": 14,
+      "actual_courses": 11,
+      "actual_slots": 14,
+      "exact_expected_slot_matches": 12,
+      "missing": [
+        {
+          "course_ref": "C06",
+          "weekday": "Tuesday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        },
+        {
+          "course_ref": "C03",
+          "weekday": "Monday",
+          "startTime": "14:10",
+          "endTime": "16:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "unexpected": [
+        {
+          "course_ref": "C06",
+          "weekday": "Monday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        },
+        {
+          "course_ref": "C03",
+          "weekday": "Tuesday",
+          "startTime": "14:10",
+          "endTime": "16:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "actual_model": "gpt-4o-2024-08-06",
+      "input_tokens": 1831,
+      "output_tokens": 1060,
+      "latency_ms": 9336
+    },
+    {
+      "round": 5,
+      "strategy": "精簡英文提示與雙向圖片核對",
+      "started_at": "2026-10-26T16:30:08.207Z",
+      "finished_at": "2026-10-26T16:30:19.722Z",
+      "adapter_sha256": "645383153731441b831d8d9259530dd752918b1929c69391b60ed5c9ceba8862",
+      "base_git_commit": "12b05a9dcdc4328b7b59753c628e42d41fece746",
+      "attempted_calls": 1,
+      "outcome": "success",
+      "failure_code": null,
+      "exact_match": false,
+      "expected_slots": 14,
+      "actual_courses": 11,
+      "actual_slots": 14,
+      "exact_expected_slot_matches": 13,
+      "missing": [
+        {
+          "course_ref": "C03",
+          "weekday": "Monday",
+          "startTime": "14:10",
+          "endTime": "16:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "unexpected": [
+        {
+          "course_ref": "C03",
+          "weekday": "Tuesday",
+          "startTime": "14:10",
+          "endTime": "16:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "actual_model": "gpt-4o-2024-08-06",
+      "input_tokens": 1373,
+      "output_tokens": 1060,
+      "latency_ms": 11501
+    },
+    {
+      "round": 6,
+      "strategy": "補充長文字接近格線的判定",
+      "started_at": "2026-10-26T16:30:28.472Z",
+      "finished_at": "2026-10-26T16:30:39.320Z",
+      "adapter_sha256": "44f470f1f7b746d9c8fd36746b4acf0653504201274dfaba0b2b549318ce76a1",
+      "base_git_commit": "12b05a9dcdc4328b7b59753c628e42d41fece746",
+      "attempted_calls": 1,
+      "outcome": "success",
+      "failure_code": null,
+      "exact_match": false,
+      "expected_slots": 14,
+      "actual_courses": 11,
+      "actual_slots": 14,
+      "exact_expected_slot_matches": 13,
+      "missing": [
+        {
+          "course_ref": "C06",
+          "weekday": "Tuesday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "unexpected": [
+        {
+          "course_ref": "C06",
+          "weekday": "Monday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "actual_model": "gpt-4o-2024-08-06",
+      "input_tokens": 1425,
+      "output_tokens": 1060,
+      "latency_ms": 10834
+    },
+    {
+      "round": 7,
+      "strategy": "增加抽象 occupancy 列示例",
+      "started_at": "2026-10-26T16:30:57.897Z",
+      "finished_at": "2026-10-26T16:31:09.528Z",
+      "adapter_sha256": "3430d74c1d68a6bdd432355a68311038676bb7bfb91ca096c4a5fccb54e36a0d",
+      "base_git_commit": "12b05a9dcdc4328b7b59753c628e42d41fece746",
+      "attempted_calls": 1,
+      "outcome": "success",
+      "failure_code": null,
+      "exact_match": false,
+      "expected_slots": 14,
+      "actual_courses": 11,
+      "actual_slots": 14,
+      "exact_expected_slot_matches": 13,
+      "missing": [
+        {
+          "course_ref": "C06",
+          "weekday": "Tuesday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "unexpected": [
+        {
+          "course_ref": "C06",
+          "weekday": "Monday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "actual_model": "gpt-4o-2024-08-06",
+      "input_tokens": 1462,
+      "output_tokens": 1060,
+      "latency_ms": 11617
+    },
+    {
+      "round": 8,
+      "strategy": "反向逐欄讀取，正向核對",
+      "started_at": "2026-10-26T16:31:15.800Z",
+      "finished_at": "2026-10-26T16:31:27.599Z",
+      "adapter_sha256": "21da06b3e3cfe038a2f575fe0b344510009b863b174c0e6a6a0202edf40aae40",
+      "base_git_commit": "12b05a9dcdc4328b7b59753c628e42d41fece746",
+      "attempted_calls": 1,
+      "outcome": "failed",
+      "failure_code": "inconsistent_columns",
+      "exact_match": false,
+      "expected_slots": 14,
+      "actual_courses": null,
+      "actual_slots": null,
+      "exact_expected_slot_matches": null,
+      "missing": [],
+      "unexpected": [],
+      "actual_model": "gpt-4o-2024-08-06",
+      "input_tokens": 1433,
+      "output_tokens": 1060,
+      "latency_ms": 11786
+    },
+    {
+      "round": 9,
+      "strategy": "逐列讀取與左右邊界雙向計數",
+      "started_at": "2026-10-26T16:31:42.721Z",
+      "finished_at": "2026-10-26T16:31:51.671Z",
+      "adapter_sha256": "2f567c38b39bf8e6fa0eeb195f12eeac09e0ea265e2ad1259452c0ce5ffaf37d",
+      "base_git_commit": "12b05a9dcdc4328b7b59753c628e42d41fece746",
+      "attempted_calls": 1,
+      "outcome": "success",
+      "failure_code": null,
+      "exact_match": false,
+      "expected_slots": 14,
+      "actual_courses": 11,
+      "actual_slots": 14,
+      "exact_expected_slot_matches": 13,
+      "missing": [
+        {
+          "course_ref": "C06",
+          "weekday": "Tuesday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "unexpected": [
+        {
+          "course_ref": "C06",
+          "weekday": "Monday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "actual_model": "gpt-4o-2024-08-06",
+      "input_tokens": 1504,
+      "output_tokens": 1060,
+      "latency_ms": 8937
+    },
+    {
+      "round": 10,
+      "strategy": "最精簡的逐字視覺抄錄提示",
+      "started_at": "2026-10-26T16:32:10.549Z",
+      "finished_at": "2026-10-26T16:32:23.821Z",
+      "adapter_sha256": "886de92c1c4b89519b3f7ec76fc1228266a948e0feca263a5df13474e8b02926",
+      "base_git_commit": "12b05a9dcdc4328b7b59753c628e42d41fece746",
+      "attempted_calls": 1,
+      "outcome": "success",
+      "failure_code": null,
+      "exact_match": false,
+      "expected_slots": 14,
+      "actual_courses": 11,
+      "actual_slots": 14,
+      "exact_expected_slot_matches": 13,
+      "missing": [
+        {
+          "course_ref": "C06",
+          "weekday": "Tuesday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "unexpected": [
+        {
+          "course_ref": "C06",
+          "weekday": "Monday",
+          "startTime": "16:10",
+          "endTime": "18:00",
+          "professor_empty": true,
+          "location_empty": true
+        }
+      ],
+      "actual_model": "gpt-4o-2024-08-06",
+      "input_tokens": 1315,
+      "output_tokens": 1198,
+      "latency_ms": 13256
+    }
+  ]
+}

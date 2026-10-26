@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
+      "x-cc-payment-id": tradeNo,
     },
   });
 

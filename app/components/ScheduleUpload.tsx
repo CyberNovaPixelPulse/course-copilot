@@ -12,6 +12,8 @@ import {
   type PixelRect,
 } from "@/lib/imageCompressor";
 import { getSampleCourses, localizeSampleCourses } from "@/lib/sampleSchedule";
+import CheckoutRecovery, { useCheckoutRecovery } from "./CheckoutRecovery";
+import type { PaymentProvider } from "@/lib/checkout-recovery";
 import AccountActivity from "./AccountActivity";
 import ExportSuccessModal from "./ExportSuccessModal";
 import ScheduleCropModal from "./ScheduleCropModal";
@@ -28,7 +30,6 @@ const OPEN_PAYWALL_EVENT = "cc-open-paywall";
 const USAGE_UPDATED_EVENT = "cc-usage-updated";
 const CURRENCY_EVENT = "cc-dev-currency";
 const CURRENCY_KEY = "cc_dev_currency";
-const CHECKOUT_SCHEDULE_KEY = "cc_checkout_schedule";
 
 type PreviewFile = {
   id: string;
@@ -118,9 +119,6 @@ function ScheduleUploadScreen() {
   const signedIn = status === "authenticated";
   const accountId = session?.user?.id || session?.user?.email || "";
   const [showPaywall, setShowPaywall] = useState(false);
-  const [checkoutTarget, setCheckoutTarget] = useState<
-    "ecpay" | "stripe" | null
-  >(null);
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoError, setPromoError] = useState<string | null>(null);
@@ -172,6 +170,12 @@ function ScheduleUploadScreen() {
     setUsage(next);
     window.dispatchEvent(new CustomEvent(USAGE_UPDATED_EVENT));
   }, []);
+
+  const checkout = useCheckoutRecovery(accountId, (next) =>
+    applyUsage(next as Usage),
+  );
+  const checkoutTarget = checkout.state.starting;
+  const checkoutFlow = checkout.flow;
 
   useEffect(() => {
     if (!redeemNotice) return;
@@ -229,85 +233,14 @@ function ScheduleUploadScreen() {
 
     async function loadUsage() {
       try {
-        const params = new URLSearchParams(window.location.search);
-        const ecpayOrder = params.get("ecpay_order");
-        if (ecpayOrder && /^[a-z0-9]{1,20}$/i.test(ecpayOrder)) {
-          const saved = window.sessionStorage.getItem(CHECKOUT_SCHEDULE_KEY);
-          if (saved) {
-            try {
-              const restored = JSON.parse(saved) as Course[];
-              if (Array.isArray(restored) && !cancelled) setCourses(restored);
-            } catch {
-              /* Ignore an expired or invalid local preview. */
-            }
-          }
-          for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
-            const response = await fetch(
-              `/api/checkout/ecpay/status?order=${encodeURIComponent(ecpayOrder)}`,
-              { headers: authHeaders() },
-            );
-            const data = (await response.json()) as Usage & {
-              paymentStatus?: string;
-              error?: string;
-            };
-            if (!response.ok) {
-              if (!cancelled)
-                setError(
-                  data.error ||
-                    "Unable to confirm payment. Please refresh after signing in.",
-                );
-              break;
-            }
-            if (!cancelled) applyUsage(data);
-            if (data.paymentStatus === "paid") {
-              if (!cancelled) {
-                setRedeemNotice(
-                  document.documentElement.lang.startsWith("zh")
-                    ? "付款成功，已加入 30 次高精度額度並解鎖行事曆匯出。"
-                    : "Payment confirmed. 30 credits added and calendar export unlocked.",
-                );
-                window.history.replaceState(
-                  {},
-                  "",
-                  `${window.location.pathname}#upload`,
-                );
-                window.sessionStorage.removeItem(CHECKOUT_SCHEDULE_KEY);
-              }
-              break;
-            }
-            if (attempt === 14 && !cancelled)
-              setError(
-                document.documentElement.lang.startsWith("zh")
-                  ? "尚未收到付款完成通知。若已付款，請稍後重新整理此頁，無須再次付款。"
-                  : "Payment confirmation is pending. If you have paid, refresh later without paying again.",
-              );
-            await new Promise((resolve) => window.setTimeout(resolve, 2000));
-          }
-        }
-        if (params.get("checkout") === "success" && params.get("session_id")) {
-          const confirm = await fetch(
-            `/api/checkout/confirm?session_id=${encodeURIComponent(params.get("session_id")!)}`,
-            { headers: authHeaders() },
-          );
-          const confirmed = (await confirm.json()) as Usage & {
-            error?: string;
-          };
-          if (confirm.ok && !cancelled) {
-            applyUsage(confirmed);
-            window.history.replaceState({}, "", window.location.pathname);
-          } else if (!cancelled)
-            setError(
-              confirmed.error ||
-                "付款仍在確認中，請稍後重新整理，無須再次付款。",
-            );
-        }
-
         const response = await fetch("/api/user/usage", {
           headers: authHeaders(),
         });
         const data = (await response.json()) as Usage;
-        if (response.ok && !cancelled) applyUsage(data);
-        else if (!cancelled) setError("暫時無法驗證帳號權益，請稍後重試。");
+        if (response.ok) {
+          if (!cancelled && checkoutFlow.current?.state().payment !== "paid")
+            applyUsage(data);
+        } else if (!cancelled) setError("暫時無法驗證帳號權益，請稍後重試。");
       } catch {
         if (!cancelled) setError("暫時無法驗證帳號權益，請稍後重試。");
       }
@@ -323,7 +256,13 @@ function ScheduleUploadScreen() {
     return () => {
       cancelled = true;
     };
-  }, [applyUsage, status, session?.user?.id, session?.user?.email]);
+  }, [
+    applyUsage,
+    status,
+    session?.user?.id,
+    session?.user?.email,
+    checkoutFlow,
+  ]);
 
   const parseFiles = useCallback(
     async (images: File[]) => {
@@ -550,73 +489,23 @@ function ScheduleUploadScreen() {
     void exportCalendar();
   }
 
-  async function startEcpayCheckout() {
-    if (!signedIn) {
-      await signIn("google", { callbackUrl: "/#upload" });
-      return;
-    }
-    setCheckoutTarget("ecpay");
-    setError(null);
-    try {
-      const response = await fetch("/api/checkout/ecpay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ locale }),
-      });
-      const contentType = response.headers.get("content-type") ?? "";
-      if (!response.ok || !contentType.includes("text/html")) {
-        const data = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(data?.error || t.paywall.checkoutError);
-      }
-      const html = await response.text();
-      window.sessionStorage.setItem(
-        CHECKOUT_SCHEDULE_KEY,
-        JSON.stringify(courses),
-      );
-      document.open();
-      document.write(html);
-      document.close();
-    } catch (checkoutError) {
-      setError(
-        checkoutError instanceof Error
-          ? checkoutError.message
-          : t.paywall.checkoutError,
-      );
-      setCheckoutTarget(null);
-    }
+  const lastCheckoutProvider = useRef<PaymentProvider>("ecpay");
+  async function startCheckout(provider: PaymentProvider) {
+    lastCheckoutProvider.current = provider;
+    await checkout.start(provider, courses, locale);
+    setShowPaywall(false);
   }
 
-  async function startStripeCheckout() {
-    if (!signedIn) {
-      await signIn("google", { callbackUrl: "/#upload" });
+  async function continueWithoutDraft() {
+    if (
+      !window.confirm(
+        locale.startsWith("zh")
+          ? "不保存課表就繼續付款，返回後可能無法恢復。確定繼續？"
+          : "Continue without saving? Your schedule may not be recoverable after payment.",
+      )
+    )
       return;
-    }
-    setCheckoutTarget("stripe");
-    setError(null);
-    try {
-      const response = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ locale }),
-      });
-      const data = (await response.json().catch(() => null)) as {
-        url?: string;
-        error?: string;
-      } | null;
-      if (!response.ok || !data?.url) {
-        throw new Error(data?.error || t.paywall.checkoutError);
-      }
-      window.location.href = data.url;
-    } catch (checkoutError) {
-      setError(
-        checkoutError instanceof Error
-          ? checkoutError.message
-          : t.paywall.checkoutError,
-      );
-      setCheckoutTarget(null);
-    }
+    await checkout.start(lastCheckoutProvider.current, courses, locale, true);
   }
 
   function promoFailureMessage(error?: string) {
@@ -680,6 +569,14 @@ function ScheduleUploadScreen() {
     }
   }
 
+  function restoreSchedule(restored: Course[]) {
+    parseRequestId.current += 1;
+    showingSample.current = false;
+    setIsParsing(false);
+    setCourses(restored);
+    setCalendarKey((current) => current + 1);
+  }
+
   const priceLabel = formatPlanPrice(locale, rates, currencyOverride);
   const withPrice = (text: string) => text.replaceAll("NT$9", priceLabel);
 
@@ -689,18 +586,42 @@ function ScheduleUploadScreen() {
       className="mx-auto w-full max-w-6xl scroll-mt-24"
       aria-labelledby="upload-heading"
     >
-      {signedIn && (
-        <AccountActivity
-          key={session?.user?.id || session?.user?.email}
-          restore={(restored) => {
-            parseRequestId.current += 1;
-            showingSample.current = false;
-            setIsParsing(false);
-            setCourses(restored);
-            setCalendarKey((key) => key + 1);
-          }}
+      <>
+        {checkout.state.problem === "save" ? (
+          <div className="flex gap-4 text-sm">
+            <button
+              type="button"
+              className="underline"
+              onClick={() => void startCheckout(lastCheckoutProvider.current)}
+            >
+              {locale.startsWith("zh")
+                ? "重試保存並付款"
+                : "Retry saving and checkout"}
+            </button>
+            <button
+              type="button"
+              className="underline"
+              onClick={() => void continueWithoutDraft()}
+            >
+              {locale.startsWith("zh")
+                ? "不保存課表，繼續付款"
+                : "Continue without saving"}
+            </button>
+          </div>
+        ) : null}
+        <CheckoutRecovery
+          checkout={checkout}
+          courses={courses}
+          locale={locale}
+          onRestore={restoreSchedule}
         />
-      )}
+        {signedIn && (
+          <AccountActivity
+            key={session?.user?.id || session?.user?.email}
+            restore={restoreSchedule}
+          />
+        )}
+      </>
       {status === "unauthenticated" ? (
         <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4 sm:px-5">
           <p className="text-sm font-semibold leading-6 text-indigo-950">
@@ -1009,7 +930,7 @@ function ScheduleUploadScreen() {
                 <button
                   type="button"
                   disabled={checkoutTarget !== null}
-                  onClick={() => void startEcpayCheckout()}
+                  onClick={() => void startCheckout("ecpay")}
                   className="mt-5 w-full rounded-full bg-indigo-600 px-4 py-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
                 >
                   {checkoutTarget === "ecpay"
@@ -1020,7 +941,7 @@ function ScheduleUploadScreen() {
                   <button
                     type="button"
                     disabled={checkoutTarget !== null}
-                    onClick={() => void startStripeCheckout()}
+                    onClick={() => void startCheckout("stripe")}
                     className="mt-2 w-full rounded-full border border-stone-300 bg-white px-4 py-3 text-sm font-medium text-stone-900 hover:bg-stone-50 disabled:opacity-60"
                   >
                     {checkoutTarget === "stripe"

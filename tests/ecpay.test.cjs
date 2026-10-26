@@ -240,16 +240,30 @@ sessionModule.getGoogleSession = async () => googleSession;
 const checkout = require("../app/api/checkout/ecpay/route.ts");
 const paymentStatus = require("../app/api/checkout/ecpay/status/route.ts");
 let stripeSession = {};
+let createdStripeOptions;
 const realWebhooks = new (require("stripe"))("sk_test_fixture").webhooks;
 const originalLoad = Module._load;
 Module._load = function (id, ...args) {
   if (id === "stripe")
     return class Stripe {
       webhooks = realWebhooks;
-      checkout = { sessions: { retrieve: async () => stripeSession } };
+      checkout = {
+        sessions: {
+          retrieve: async () => stripeSession,
+          create: async (options) => {
+            createdStripeOptions = options;
+            return {
+              id: "cs_return_fixture",
+              url: "https://checkout.example.invalid/fixture",
+            };
+          },
+        },
+      };
     };
   return originalLoad.call(this, id, ...args);
 };
+const stripeCheckout = require("../app/api/checkout/route.ts");
+const returnReference = require("../app/api/checkout/return-reference/route.ts");
 const stripeConfirm = require("../app/api/checkout/confirm/route.ts");
 const stripeWebhook = require("../app/api/webhooks/stripe/route.ts");
 Module._load = originalLoad;
@@ -287,6 +301,7 @@ test("checkout and status enforce sign-in and order ownership; payment unlocks v
   assert.equal(response.headers.get("cache-control"), "no-store");
   const html = await response.text();
   const id = html.match(/name="MerchantTradeNo" value="([^"]+)"/)[1];
+  assert.equal(response.headers.get("x-cc-payment-id"), id);
   assert(html.includes('name="TotalAmount" value="9"'));
   assert(html.includes("/api/webhooks/ecpay"));
   assert(html.includes("/api/checkout/ecpay/return"));
@@ -428,4 +443,43 @@ test("Stripe signed notification grants without browser return, rejects tamperin
   assert.equal((await stripeWebhook.POST(request())).status, 200);
   assert.equal((await stripeWebhook.POST(request())).status, 200);
   assert.equal((await store.usage("webhook-buyer")).creditRemaining, 30);
+});
+
+test("Stripe cancellation return is resolvable without browser storage and remains account scoped", async () => {
+  process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
+  googleSession = { user: { id: "return-buyer" } };
+  const response = await stripeCheckout.POST(
+    new NextRequest("https://shop.example/api/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        locale: "zh-TW",
+        attemptId: "return-attempt-fixture",
+      }),
+    }),
+  );
+  assert.equal(response.status, 200);
+  assert(
+    createdStripeOptions.cancel_url.includes(
+      "checkout=cancel&cc_attempt=return-attempt-fixture",
+    ),
+  );
+  assert(
+    createdStripeOptions.success_url.includes(
+      "session_id={CHECKOUT_SESSION_ID}&cc_attempt=return-attempt-fixture",
+    ),
+  );
+  const request = new NextRequest(
+    "https://shop.example/api/checkout/return-reference?attempt=return-attempt-fixture",
+  );
+  const own = await returnReference.GET(request);
+  assert.equal(own.status, 200);
+  assert.deepEqual(await own.json(), {
+    provider: "stripe",
+    paymentId: "cs_return_fixture",
+  });
+  googleSession = { user: { id: "other-buyer" } };
+  assert.equal((await returnReference.GET(request)).status, 403);
+  googleSession = null;
+  assert.equal((await returnReference.GET(request)).status, 401);
 });

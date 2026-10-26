@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { saveCheckoutReturnLink } from "@/lib/checkout-return-links";
 import {
   ECPAY_TWD_NOTE,
   getRateSnapshot,
@@ -67,8 +68,17 @@ export async function POST(request: NextRequest) {
   const origin = request.nextUrl.origin;
 
   let locale = "zh-TW";
+  let attemptId = "";
   try {
-    const body = (await request.json()) as { locale?: unknown };
+    const body = (await request.json()) as {
+      locale?: unknown;
+      attemptId?: unknown;
+    };
+    if (
+      typeof body?.attemptId === "string" &&
+      /^[a-zA-Z0-9-]{1,80}$/.test(body.attemptId)
+    )
+      attemptId = body.attemptId;
     if (typeof body?.locale === "string" && body.locale.length <= 35)
       locale = body.locale;
   } catch {
@@ -79,10 +89,13 @@ export async function POST(request: NextRequest) {
     ? `${quote.note}. 30 high-precision gpt-4o extractions + unlimited .ics downloads`
     : "30 high-precision gpt-4o extractions + unlimited .ics downloads";
 
+  const attemptQuery = attemptId
+    ? `&cc_attempt=${encodeURIComponent(attemptId)}`
+    : "";
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: "payment",
-    success_url: `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${origin}/#upload`,
+    success_url: `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}${attemptQuery}`,
+    cancel_url: `${origin}/?checkout=cancel${attemptQuery}#upload`,
     client_reference_id: googleId,
     metadata: {
       userId: googleId,
@@ -118,6 +131,8 @@ export async function POST(request: NextRequest) {
       quote.unitAmount,
       quote.currency,
     );
+    if (attemptId)
+      await saveCheckoutReturnLink(attemptId, googleId, checkoutSession.id);
     const response = await accountResponse(googleId, {
       url: checkoutSession.url,
       sessionId: checkoutSession.id,

@@ -1,4 +1,5 @@
-import { WEEKDAYS, type Course } from "./types";
+import { isCourseStructure } from "./course-time";
+import { type Course } from "./types";
 
 export type PaymentProvider = "ecpay" | "stripe";
 export type PaymentReference = { provider: PaymentProvider; paymentId: string };
@@ -35,29 +36,8 @@ export type CheckoutDraft = {
 const PREFIX = "cc_checkout_v1:";
 const ATTEMPTS = "cc_checkout_attempt:";
 const RETENTION = 7 * 24 * 60 * 60 * 1000;
-function validCourses(value: unknown): value is Course[] {
-  return (
-    Array.isArray(value) &&
-    value.length > 0 &&
-    value.every(
-      (c) =>
-        c &&
-        typeof c.name === "string" &&
-        typeof c.professor === "string" &&
-        Array.isArray(c.slots) &&
-        c.slots.every(
-          (s: Record<string, unknown>) =>
-            s &&
-            WEEKDAYS.includes(s.weekday as (typeof WEEKDAYS)[number]) &&
-            typeof s.startTime === "string" &&
-            /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(s.startTime) &&
-            typeof s.endTime === "string" &&
-            /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(s.endTime) &&
-            typeof s.location === "string",
-        ),
-    )
-  );
-}
+const validCourses = (value: unknown): value is Course[] =>
+  isCourseStructure(value) && value.length > 0;
 type Dependencies = {
   resolveAttempt: (
     attemptId: string,
@@ -265,8 +245,7 @@ export function createCheckoutRecovery(accountId: string, deps: Dependencies) {
         reference = lookup;
         const draft = listDrafts().find(
           (d) =>
-            d.provider === lookup.provider &&
-            d.paymentId === lookup.paymentId,
+            d.provider === lookup.provider && d.paymentId === lookup.paymentId,
         );
         publish({ reference, preferredDraftId: draft?.id });
       }

@@ -345,3 +345,27 @@ test("backend return lookup prioritizes its original draft when local attempt hi
   await reopened.handleReturn("?checkout=cancel&cc_attempt=lost-local-hint");
   assert.equal(reopened.state().preferredDraftId, older.id);
 });
+test("repairable day/time and empty-slot courses survive checkout and restore without extending expiry", async () => {
+  const x = setup();
+  const pending = [
+    {
+      name: "Repair",
+      professor: "",
+      slots: [
+        {
+          weekday: "Funday",
+          startTime: "08:99",
+          endTime: "07:00",
+          location: "",
+        },
+      ],
+    },
+    { name: "Empty", professor: "", slots: [] },
+  ];
+  await x.flow.start("stripe", pending, "zh-TW");
+  const draft = x.flow.listDrafts()[0];
+  assert.ok(draft);
+  x.advance(10000);
+  assert.deepEqual(x.flow.restore(draft.id, false).courses, pending);
+  assert.equal(x.flow.listDrafts()[0].expiresAt, draft.expiresAt);
+});

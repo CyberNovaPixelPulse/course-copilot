@@ -1,14 +1,5 @@
-import { WEEKDAYS, type Course, type Weekday } from "./types";
-
-const ICS_WEEKDAY: Record<Weekday, string> = {
-  Monday: "MO",
-  Tuesday: "TU",
-  Wednesday: "WE",
-  Thursday: "TH",
-  Friday: "FR",
-  Saturday: "SA",
-  Sunday: "SU",
-};
+import { exportableCourses, parseMinutes } from "./course-time";
+import { type Course, type Weekday } from "./types";
 
 const JS_WEEKDAY: Record<Weekday, number> = {
   Sunday: 0,
@@ -26,17 +17,9 @@ function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
-function parseTime(value: string): { hours: number; minutes: number } {
-  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) {
-    throw new Error(`Invalid time: ${value}`);
-  }
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (hours > 23 || minutes > 59) {
-    throw new Error(`Invalid time: ${value}`);
-  }
-  return { hours, minutes };
+function parseTime(value: string) {
+  const total = parseMinutes(value)!;
+  return { hours: Math.floor(total / 60), minutes: total % 60 };
 }
 
 function formatLocalDateTime(date: Date) {
@@ -53,8 +36,21 @@ function formatUtcStamp(date: Date) {
   );
 }
 
-function nextOccurrence(weekday: Weekday, hours: number, minutes: number, from = new Date()) {
-  const date = new Date(from.getFullYear(), from.getMonth(), from.getDate(), hours, minutes, 0, 0);
+function nextOccurrence(
+  weekday: Weekday,
+  hours: number,
+  minutes: number,
+  from = new Date(),
+) {
+  const date = new Date(
+    from.getFullYear(),
+    from.getMonth(),
+    from.getDate(),
+    hours,
+    minutes,
+    0,
+    0,
+  );
   const target = JS_WEEKDAY[weekday];
   const delta = (target - date.getDay() + 7) % 7;
   date.setDate(date.getDate() + delta);
@@ -85,11 +81,13 @@ function foldLine(line: string) {
 }
 
 function slug(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40) || "course";
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40) || "course"
+  );
 }
 
 export function coursesToIcs(
@@ -97,22 +95,26 @@ export function coursesToIcs(
   options?: { weekCount?: number; from?: Date },
 ) {
   const weekCount = options?.weekCount ?? DEFAULT_WEEK_COUNT;
+  courses = exportableCourses(courses);
   const now = options?.from ?? new Date();
   const dtstamp = formatUtcStamp(now);
 
   const events = courses.flatMap((course, courseIndex) =>
     (course.slots || []).flatMap((slot, slotIndex) => {
-      if (!WEEKDAYS.includes(slot.weekday)) return [];
       const start = parseTime(slot.startTime);
       const end = parseTime(slot.endTime);
-      const dtStart = nextOccurrence(slot.weekday, start.hours, start.minutes, now);
+      const dtStart = nextOccurrence(
+        slot.weekday,
+        start.hours,
+        start.minutes,
+        now,
+      );
       const dtEnd = nextOccurrence(slot.weekday, end.hours, end.minutes, now);
-      if (dtEnd <= dtStart) {
-        dtEnd.setDate(dtEnd.getDate() + 1);
-      }
 
       const uid = `${slug(course.name)}-${slot.weekday}-${slot.startTime.replace(":", "")}-${courseIndex}-${slotIndex}@course-copilot`;
-      const description = course.professor ? `Professor: ${course.professor}` : "";
+      const description = course.professor
+        ? `Professor: ${course.professor}`
+        : "";
 
       return [
         "BEGIN:VEVENT",
@@ -142,4 +144,3 @@ export function coursesToIcs(
 
   return `${lines.map(foldLine).join("\r\n")}\r\n`;
 }
-

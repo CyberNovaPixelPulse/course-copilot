@@ -2,23 +2,27 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { WEEKDAYS, type Course, type CourseSlot, type Weekday } from "@/lib/types";
+import {
+  WEEKDAYS,
+  type Course,
+  type CourseSlot,
+  type Weekday,
+} from "@/lib/types";
+import {
+  inspectSchedule,
+  normalizeSlot,
+  placeTimeRanges,
+  parseMinutes,
+  formatMinutes,
+  slotProblem,
+  changeSlotTime,
+  overlappingSlots,
+  type TimeWindow,
+} from "@/lib/course-time";
 import { useI18n } from "@/lib/i18n";
 
-const DAY_START = 8 * 60;
-const DAY_END = 20 * 60;
-const SNAP = 15;
-const MIN_DURATION = 15;
+const MIN_DURATION = 1;
 const HOUR_HEIGHT = 72;
-const GRID_HEIGHT = ((DAY_END - DAY_START) / 60) * HOUR_HEIGHT;
-const WEEKDAYS_MON_FRI: Weekday[] = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-];
-
 const PALETTE = [
   { bg: "#4f46e5", bgSoft: "#eef2ff", text: "#eef2ff" },
   { bg: "#db2777", bgSoft: "#fdf2f8", text: "#fff1f2" },
@@ -51,27 +55,11 @@ type DragState = {
   origStart: number;
   origEnd: number;
   moved: boolean;
+  window: TimeWindow;
 };
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
-}
-
-function parseMinutes(value: string) {
-  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
-}
-
-function formatMinutes(total: number) {
-  const clamped = Math.max(0, Math.min(total, 24 * 60 - 1));
-  const hours = Math.floor(clamped / 60);
-  const minutes = clamped % 60;
-  return `${pad(hours)}:${pad(minutes)}`;
-}
-
-function snapMinutes(value: number) {
-  return Math.round(value / SNAP) * SNAP;
 }
 
 function colorForName(name: string) {
@@ -80,72 +68,30 @@ function colorForName(name: string) {
   return PALETTE[hash % PALETTE.length];
 }
 
-function minutesToY(minutes: number) {
-  return ((minutes - DAY_START) / 60) * HOUR_HEIGHT;
-}
-
-function yToMinutesDelta(deltaY: number) {
-  return (deltaY / HOUR_HEIGHT) * 60;
-}
-
-function clampRange(start: number, end: number) {
-  let nextStart = Math.max(DAY_START, Math.min(start, DAY_END - MIN_DURATION));
-  let nextEnd = Math.max(nextStart + MIN_DURATION, Math.min(end, DAY_END));
-  if (nextEnd - nextStart < MIN_DURATION) {
-    nextEnd = nextStart + MIN_DURATION;
-  }
-  return [nextStart, nextEnd] as const;
-}
-
-function visibleDays(courses: Course[]): Weekday[] {
-  const weekend = courses.some((course) =>
-    (course.slots || []).some(
-      (slot) => slot.weekday === "Saturday" || slot.weekday === "Sunday",
-    ),
-  );
-  return weekend ? [...WEEKDAYS_MON_FRI, "Saturday", "Sunday"] : WEEKDAYS_MON_FRI;
-}
-
-function packDay(events: CalendarEvent[]): CalendarEvent[] {
-  const sorted = [...events].sort((a, b) => a.start - b.start || a.end - b.end);
-  const clusters: CalendarEvent[][] = [];
-
-  for (const event of sorted) {
-    const cluster = clusters[clusters.length - 1];
-    if (!cluster) {
-      clusters.push([event]);
-      continue;
-    }
-    const clusterEnd = Math.max(...cluster.map((item) => item.end));
-    if (event.start < clusterEnd) cluster.push(event);
-    else clusters.push([event]);
-  }
-
-  return clusters.flatMap((cluster) => {
-    const colEnd: number[] = [];
-    const placed = cluster.map((event) => {
-      let col = colEnd.findIndex((end) => end <= event.start);
-      if (col === -1) {
-        col = colEnd.length;
-        colEnd.push(event.end);
-      } else {
-        colEnd[col] = event.end;
-      }
-      return { ...event, col };
-    });
-    const cols = Math.max(colEnd.length, 1);
-    return placed.map((event) => ({ ...event, cols }));
-  });
-}
-
 type WeeklyCalendarProps = {
   courses: Course[];
   onChange: (next: Course[] | ((current: Course[]) => Course[])) => void;
 };
 
-export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProps) {
+export default function WeeklyCalendar({
+  courses,
+  onChange,
+}: WeeklyCalendarProps) {
   const { t } = useI18n();
   const dragRef = useRef<DragState | null>(null);
+  const [dragWindow, setDragWindow] = useState<TimeWindow | null>(null);
+  const [timeDraft, setTimeDraft] = useState({
+    startTime: "",
+    endTime: "",
+    location: "",
+    weekday: "Monday" as Weekday,
+  });
+  const [editError, setEditError] = useState("");
+  const inspection = useMemo(() => inspectSchedule(courses), [courses]);
+  const window = dragWindow ?? inspection.window;
+  const GRID_HEIGHT = ((window.end - window.start) / 60) * HOUR_HEIGHT;
+  const minutesToY = (minutes: number) =>
+    ((minutes - window.start) / 60) * HOUR_HEIGHT;
   const [editing, setEditing] = useState<{
     courseIndex: number;
     slotIndex: number;
@@ -153,17 +99,22 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
 
   useEffect(() => {
     if (!editing) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setEditing(null);
+    };
+    document.addEventListener("keydown", onKey);
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previous;
+      document.removeEventListener("keydown", onKey);
     };
   }, [editing]);
 
-  const days = useMemo(() => visibleDays(courses), [courses]);
-  const hours = useMemo(
-    () => Array.from({ length: (DAY_END - DAY_START) / 60 }, (_, index) => 8 + index),
-    [],
+  const days = inspection.days;
+  const hours = Array.from(
+    { length: (window.end - window.start) / 60 + 1 },
+    (_, i) => window.start / 60 + i,
   );
 
   const eventsByDay = useMemo(() => {
@@ -172,16 +123,15 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
       (course.slots || []).forEach((slot, slotIndex) => {
         const start = parseMinutes(slot.startTime);
         const end = parseMinutes(slot.endTime);
-        if (start === null || end === null || end <= start) return;
-        if (end <= DAY_START || start >= DAY_END) return;
+        if (slotProblem(slot) || start === null || end === null) return;
         const event: CalendarEvent = {
           key: `${courseIndex}-${slotIndex}`,
           courseIndex,
           slotIndex,
           course,
           slot,
-          start: Math.max(start, DAY_START),
-          end: Math.min(end, DAY_END),
+          start,
+          end,
           col: 0,
           cols: 1,
         };
@@ -192,15 +142,20 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
     });
     const packed = new Map<Weekday, CalendarEvent[]>();
     for (const day of days) {
-      packed.set(day, packDay(grouped.get(day) ?? []));
+      packed.set(day, placeTimeRanges(grouped.get(day) ?? []));
     }
     return packed;
   }, [courses, days]);
 
   const editingEvent = editing
-    ? courses[editing.courseIndex]?.slots?.[editing.slotIndex] && {
+    ? courses[editing.courseIndex] && {
         course: courses[editing.courseIndex],
-        slot: courses[editing.courseIndex].slots[editing.slotIndex],
+        slot: courses[editing.courseIndex].slots[editing.slotIndex] ?? {
+          weekday: "Monday" as Weekday,
+          startTime: "09:00",
+          endTime: "10:00",
+          location: "",
+        },
       }
     : null;
 
@@ -224,23 +179,62 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
     );
   }
 
-  function applyTime(courseIndex: number, slotIndex: number, start: number, end: number) {
-    const [nextStart, nextEnd] = clampRange(snapMinutes(start), snapMinutes(end));
-    patchSlot(courseIndex, slotIndex, {
-      startTime: formatMinutes(nextStart),
-      endTime: formatMinutes(nextEnd),
+  function openEdit(courseIndex: number, slotIndex: number) {
+    const slot = courses[courseIndex].slots[slotIndex];
+    setTimeDraft({
+      startTime: slot?.startTime ?? "09:00",
+      endTime: slot?.endTime ?? "10:00",
+      weekday: slot?.weekday ?? "Monday",
+      location: slot?.location ?? "",
     });
+    setEditError("");
+    setEditing({ courseIndex, slotIndex });
+  }
+
+  function saveTime() {
+    if (!editing) return;
+    const normalized = normalizeSlot(timeDraft);
+    if (!normalized.slot) {
+      setEditError(normalized.problem);
+      return;
+    }
+    const next = normalized.slot;
+    onChange((current) =>
+      current.map((c, i) =>
+        i !== editing.courseIndex
+          ? c
+          : {
+              ...c,
+              slots:
+                editing.slotIndex < 0
+                  ? [...c.slots, next]
+                  : c.slots.map((s, j) =>
+                      j === editing.slotIndex
+                        ? { ...s, ...next, location: s.location }
+                        : s,
+                    ),
+            },
+      ),
+    );
+    setEditing(null);
   }
 
   function deleteSlot(courseIndex: number, slotIndex: number) {
+    const last = courses[courseIndex].slots.length <= 1;
+    if (last && !globalThis.confirm("刪除這門課？")) return;
     onChange((current) =>
-      current.map((course, index) => {
-        if (index !== courseIndex) return course;
-        return {
-          ...course,
-          slots: (course.slots || []).filter((_, sIndex) => sIndex !== slotIndex),
-        };
-      }),
+      current.flatMap((course, index) =>
+        index !== courseIndex
+          ? [course]
+          : last
+            ? []
+            : [
+                {
+                  ...course,
+                  slots: course.slots.filter((_, i) => i !== slotIndex),
+                },
+              ],
+      ),
     );
     setEditing(null);
   }
@@ -258,70 +252,120 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
       ?.getAttribute("data-handle");
     const type: DragState["type"] =
       handle === "start" || handle === "end" ? handle : "move";
+    setDragWindow({ ...window });
     dragRef.current = {
       type,
       courseIndex: calendarEvent.courseIndex,
       slotIndex: calendarEvent.slotIndex,
       pointerId: event.pointerId,
       originY: event.clientY,
-      origStart: parseMinutes(calendarEvent.slot.startTime) ?? calendarEvent.start,
+      origStart:
+        parseMinutes(calendarEvent.slot.startTime) ?? calendarEvent.start,
       origEnd: parseMinutes(calendarEvent.slot.endTime) ?? calendarEvent.end,
       moved: false,
+      window: { ...window },
     };
   }
 
   function onPointerMove(event: React.PointerEvent<HTMLButtonElement>) {
     const drag = dragRef.current;
     if (!drag || event.pointerId !== drag.pointerId) return;
-    const rawDelta = yToMinutesDelta(event.clientY - drag.originY);
     if (Math.abs(event.clientY - drag.originY) > 4) drag.moved = true;
-    const delta = snapMinutes(rawDelta);
-
-    if (drag.type === "move") {
-      const duration = drag.origEnd - drag.origStart;
-      applyTime(drag.courseIndex, drag.slotIndex, drag.origStart + delta, drag.origStart + delta + duration);
-      return;
-    }
-    if (drag.type === "start") {
-      applyTime(
-        drag.courseIndex,
-        drag.slotIndex,
-        snapMinutes(drag.origStart + delta),
-        drag.origEnd,
-      );
-      return;
-    }
-    applyTime(
-      drag.courseIndex,
-      drag.slotIndex,
-      drag.origStart,
-      snapMinutes(drag.origEnd + delta),
+    if (!drag.moved) return;
+    const original = {
+      ...courses[drag.courseIndex].slots[drag.slotIndex],
+      startTime: formatMinutes(drag.origStart),
+      endTime: formatMinutes(drag.origEnd),
+    };
+    const next = changeSlotTime(
+      original,
+      drag.type,
+      ((event.clientY - drag.originY) / HOUR_HEIGHT) * 60,
+      drag.window,
     );
+    patchSlot(drag.courseIndex, drag.slotIndex, next);
   }
 
-  function onPointerUp(event: React.PointerEvent<HTMLButtonElement>, calendarEvent: CalendarEvent) {
+  function onPointerUp(
+    event: React.PointerEvent<HTMLButtonElement>,
+    calendarEvent: CalendarEvent,
+  ) {
     const drag = dragRef.current;
     if (!drag || event.pointerId !== drag.pointerId) return;
     const moved = drag.moved;
     dragRef.current = null;
+    setDragWindow(null);
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
       /* already released */
     }
     if (!moved && drag.type === "move") {
-      setEditing({
-        courseIndex: calendarEvent.courseIndex,
-        slotIndex: calendarEvent.slotIndex,
-      });
+      openEdit(calendarEvent.courseIndex, calendarEvent.slotIndex);
     }
   }
 
   return (
     <div className="relative">
+      {overlappingSlots(courses).length > 0 ? (
+        <p role="status" className="mb-3 text-amber-700">
+          課程時段重疊，請檢查；仍可保留並輸出。
+        </p>
+      ) : null}
+      <details className="mb-3">
+        <summary>課程明細與精確編輯</summary>
+        {courses.flatMap((c, ci) =>
+          c.slots.map((s, si) =>
+            !slotProblem(s) ? (
+              <button
+                className="block p-2"
+                type="button"
+                key={`${ci}-${si}`}
+                onClick={() => openEdit(ci, si)}
+              >
+                {c.name} · {s.weekday} {s.startTime}–{s.endTime}
+              </button>
+            ) : null,
+          ),
+        )}
+      </details>
+      {inspection.problems.length > 0 ? (
+        <section
+          aria-label="待修正課程"
+          className="mb-4 rounded-xl border border-amber-300 p-3"
+        >
+          <h3>課表有待修正內容，修正前無法輸出</h3>
+          {inspection.problems.map((p) => {
+            const c = courses[p.courseIndex],
+              s = c.slots[p.slotIndex];
+            return (
+              <div key={`${p.courseIndex}-${p.slotIndex}`} className="my-2">
+                <p>
+                  {c.name} ·{" "}
+                  {s ? `${s.weekday} ${s.startTime}–${s.endTime}` : "沒有時段"}{" "}
+                  · {p.message}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openEdit(p.courseIndex, p.slotIndex)}
+                >
+                  編輯修正
+                </button>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => deleteSlot(p.courseIndex, p.slotIndex)}
+                >
+                  {c.slots.length <= 1 ? "刪除這門課" : "刪除這個時段"}
+                </button>
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
       <div className="overflow-x-auto">
         <div
-          className="min-w-[720px]"
+          className="min-w-[720px] pb-4"
           style={{
             display: "grid",
             gridTemplateColumns: `56px repeat(${days.length}, minmax(0, 1fr))`,
@@ -392,26 +436,51 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
                       width,
                       background: color.bg,
                       color: color.text,
-                      zIndex: dragRef.current?.courseIndex === calendarEvent.courseIndex ? 10 : 1,
+                      zIndex: 1,
                     }}
-                    onPointerDown={(event) => onPointerDown(event, calendarEvent)}
+                    onClick={(event) => {
+                      if (event.detail === 0)
+                        openEdit(
+                          calendarEvent.courseIndex,
+                          calendarEvent.slotIndex,
+                        );
+                    }}
+                    onPointerDown={(event) =>
+                      onPointerDown(event, calendarEvent)
+                    }
                     onPointerMove={onPointerMove}
                     onPointerUp={(event) => onPointerUp(event, calendarEvent)}
-                    onPointerCancel={(event) => onPointerUp(event, calendarEvent)}
+                    onPointerCancel={() => {
+                      const drag = dragRef.current;
+                      if (drag)
+                        patchSlot(drag.courseIndex, drag.slotIndex, {
+                          startTime: formatMinutes(drag.origStart),
+                          endTime: formatMinutes(drag.origEnd),
+                        });
+                      dragRef.current = null;
+                      setDragWindow(null);
+                    }}
                   >
-                    <span data-handle="start" className="absolute inset-x-3 top-0 h-2 cursor-ns-resize rounded-full" />
+                    <span
+                      data-handle="start"
+                      className="absolute inset-x-3 top-0 h-2 cursor-ns-resize rounded-full"
+                    />
                     <p className="truncate text-[12px] font-semibold leading-4">
                       {calendarEvent.course.name}
                     </p>
                     <p className="truncate text-[10px] opacity-90">
-                      {calendarEvent.slot.startTime}–{calendarEvent.slot.endTime}
+                      {calendarEvent.slot.startTime}–
+                      {calendarEvent.slot.endTime}
                     </p>
                     {calendarEvent.slot.location ? (
                       <p className="truncate text-[10px] opacity-80">
                         {calendarEvent.slot.location}
                       </p>
                     ) : null}
-                    <span data-handle="end" className="absolute inset-x-3 bottom-0 h-2 cursor-ns-resize rounded-full" />
+                    <span
+                      data-handle="end"
+                      className="absolute inset-x-3 bottom-0 h-2 cursor-ns-resize rounded-full"
+                    />
                   </button>
                 );
               })}
@@ -422,99 +491,145 @@ export default function WeeklyCalendar({ courses, onChange }: WeeklyCalendarProp
 
       {editing && editingEvent
         ? createPortal(
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-          onClick={() => setEditing(null)}
-        >
-          <div
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl dark:bg-neutral-900"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-label={t.calendar.edit}
-          >
-            <p className="text-sm font-semibold text-stone-900 dark:text-neutral-100">{t.calendar.edit}</p>
-            <label className="mt-3 block text-xs font-medium text-stone-500">
-              {t.calendar.course}
-              <input
-                className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
-                value={editingEvent.course.name}
-                onChange={(event) =>
-                  patchSlot(editing.courseIndex, editing.slotIndex, {}, { name: event.target.value })
-                }
-              />
-            </label>
-            <label className="mt-3 block text-xs font-medium text-stone-500">
-              {t.calendar.professor}
-              <input
-                className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
-                value={editingEvent.course.professor}
-                onChange={(event) =>
-                  patchSlot(
-                    editing.courseIndex,
-                    editing.slotIndex,
-                    {},
-                    { professor: event.target.value },
-                  )
-                }
-              />
-            </label>
-            <label className="mt-3 block text-xs font-medium text-stone-500">
-              {t.calendar.location}
-              <input
-                className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
-                value={editingEvent.slot.location}
-                onChange={(event) =>
-                  patchSlot(editing.courseIndex, editing.slotIndex, {
-                    location: event.target.value,
-                  })
-                }
-              />
-            </label>
-            <label className="mt-3 block text-xs font-medium text-stone-500">
-              {t.calendar.weekday}
-              <select
-                className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
-                value={
-                  WEEKDAYS.includes(editingEvent.slot.weekday)
-                    ? editingEvent.slot.weekday
-                    : "Monday"
-                }
-                onChange={(event) =>
-                  patchSlot(editing.courseIndex, editing.slotIndex, {
-                    weekday: event.target.value as Weekday,
-                  })
-                }
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+              onClick={() => setEditing(null)}
+            >
+              <div
+                className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl dark:bg-neutral-900"
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                aria-label={t.calendar.edit}
               >
-                {WEEKDAYS.map((day) => (
-                  <option key={day} value={day}>
-                    {t.calendar.weekdays[day]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="mt-3 text-xs text-stone-500 dark:text-neutral-400">
-              {editingEvent.slot.startTime} – {editingEvent.slot.endTime} · {t.calendar.resizeHint}
-            </p>
-            <div className="mt-4 flex justify-between">
-              <button
-                type="button"
-                className="rounded-full px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
-                onClick={() => deleteSlot(editing.courseIndex, editing.slotIndex)}
-              >
-                {t.calendar.delete}
-              </button>
-              <button
-                type="button"
-                className="rounded-full bg-stone-900 px-4 py-1.5 text-sm font-medium text-white"
-                onClick={() => setEditing(null)}
-              >
-                {t.calendar.done}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )
+                <p className="text-sm font-semibold text-stone-900 dark:text-neutral-100">
+                  {t.calendar.edit}
+                </p>
+                <label className="mt-3 block text-xs font-medium text-stone-500">
+                  {t.calendar.course}
+                  <input
+                    className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
+                    value={editingEvent.course.name}
+                    onChange={(event) =>
+                      patchSlot(
+                        editing.courseIndex,
+                        editing.slotIndex,
+                        {},
+                        { name: event.target.value },
+                      )
+                    }
+                  />
+                </label>
+                <label className="mt-3 block text-xs font-medium text-stone-500">
+                  {t.calendar.professor}
+                  <input
+                    className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
+                    value={editingEvent.course.professor}
+                    onChange={(event) =>
+                      patchSlot(
+                        editing.courseIndex,
+                        editing.slotIndex,
+                        {},
+                        { professor: event.target.value },
+                      )
+                    }
+                  />
+                </label>
+                <label className="mt-3 block text-xs font-medium text-stone-500">
+                  {t.calendar.location}
+                  <input
+                    className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
+                    value={
+                      editing.slotIndex < 0
+                        ? timeDraft.location
+                        : editingEvent.slot.location
+                    }
+                    onChange={(event) => {
+                      if (editing.slotIndex < 0)
+                        setTimeDraft({
+                          ...timeDraft,
+                          location: event.target.value,
+                        });
+                      else
+                        patchSlot(editing.courseIndex, editing.slotIndex, {
+                          location: event.target.value,
+                        });
+                    }}
+                  />
+                </label>
+                <label className="mt-3 block text-xs font-medium text-stone-500">
+                  {t.calendar.weekday}
+                  <select
+                    className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-900 outline-none focus:border-indigo-400"
+                    value={timeDraft.weekday}
+                    onChange={(event) =>
+                      setTimeDraft({
+                        ...timeDraft,
+                        weekday: event.target.value as Weekday,
+                      })
+                    }
+                  >
+                    {!WEEKDAYS.includes(timeDraft.weekday) ? (
+                      <option value={timeDraft.weekday}>
+                        無效星期：{timeDraft.weekday}
+                      </option>
+                    ) : null}
+                    {WEEKDAYS.map((day) => (
+                      <option key={day} value={day}>
+                        {t.calendar.weekdays[day]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="mt-3 block">
+                  開始時間
+                  <input
+                    aria-label="開始時間"
+                    className="block w-full border p-2"
+                    value={timeDraft.startTime}
+                    onChange={(e) =>
+                      setTimeDraft({ ...timeDraft, startTime: e.target.value })
+                    }
+                  />
+                </label>
+                <label className="mt-3 block">
+                  結束時間
+                  <input
+                    aria-label="結束時間"
+                    className="block w-full border p-2"
+                    value={timeDraft.endTime}
+                    onChange={(e) =>
+                      setTimeDraft({ ...timeDraft, endTime: e.target.value })
+                    }
+                  />
+                </label>
+                {editError ? <p role="alert">{editError}</p> : null}
+                <button type="button" onClick={() => setEditing(null)}>
+                  取消
+                </button>
+                <div className="mt-4 flex justify-between">
+                  <button
+                    type="button"
+                    className="rounded-full px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                    onClick={() =>
+                      deleteSlot(editing.courseIndex, editing.slotIndex)
+                    }
+                  >
+                    {editingEvent.course.slots.length <= 1
+                      ? "刪除這門課"
+                      : "刪除這個時段"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full bg-stone-900 px-4 py-1.5 text-sm font-medium text-white"
+                    onClick={saveTime}
+                  >
+                    {t.calendar.done}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
         : null}
     </div>
   );

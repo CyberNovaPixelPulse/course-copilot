@@ -178,6 +178,34 @@ test("authenticated parse retries return saved courses without second call; acco
     );
     assert.equal(download.status, 200);
     assert.match(await download.text(), /BEGIN:VCALENDAR/);
+    for (const courses of [
+      [],
+      [{ name: "Empty", professor: "", slots: [] }],
+      [
+        ...result.courses,
+        {
+          name: "Broken",
+          professor: "",
+          slots: [
+            {
+              weekday: "Monday",
+              startTime: "10:00",
+              endTime: "09:00",
+              location: "",
+            },
+          ],
+        },
+      ],
+    ]) {
+      const rejected = await exported.POST(
+        new NextRequest("https://app.example/api/export-ics", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ courses }),
+        }),
+      );
+      assert.equal(rejected.status, 400);
+    }
   } finally {
     db.close();
   }

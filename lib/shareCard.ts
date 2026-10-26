@@ -1,15 +1,33 @@
-import { WEEKDAYS, type Course, type Weekday } from "./types";
+import {
+  exportableCourses,
+  parseMinutes,
+  formatMinutes,
+  inspectSchedule,
+  placeTimeRanges,
+} from "./course-time";
+import { type Course, type Weekday } from "./types";
 
 export const SHARE_URL = "https://ics.necterelux.com";
 export const SHARE_CARD_WIDTH = 1080;
 export const SHARE_CARD_HEIGHT = 1920;
 
-const FONT = '"PingFang TC", "Hiragino Sans", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+const FONT =
+  '"PingFang TC", "Hiragino Sans", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
 
-const PALETTE = ["#4f46e5", "#db2777", "#d97706", "#059669", "#0284c7", "#7c3aed", "#0d9488", "#ea580c"];
+const PALETTE = [
+  "#4f46e5",
+  "#db2777",
+  "#d97706",
+  "#059669",
+  "#0284c7",
+  "#7c3aed",
+  "#0d9488",
+  "#ea580c",
+];
 
 type PlacedBlock = {
   name: string;
+  number: number;
   startLabel: string;
   endLabel: string;
   start: number;
@@ -19,75 +37,25 @@ type PlacedBlock = {
   cols: number;
 };
 
-function parseMinutes(value: string) {
-  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
-}
-
-function pad(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-function formatMinutes(total: number) {
-  const hours = Math.floor(total / 60);
-  const minutes = total % 60;
-  return `${pad(hours)}:${pad(minutes)}`;
-}
-
 function colorForName(name: string) {
   let hash = 0;
   for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return PALETTE[hash % PALETTE.length];
 }
 
-function visibleDays(courses: Course[]): Weekday[] {
-  const weekend = courses.some((course) =>
-    (course.slots || []).some((slot) => slot.weekday === "Saturday" || slot.weekday === "Sunday"),
-  );
-  return weekend ? [...WEEKDAYS] : WEEKDAYS.slice(0, 5);
-}
-
-function timeWindow(courses: Course[]) {
-  let min = Infinity;
-  let max = -Infinity;
-  for (const course of courses) {
-    for (const slot of course.slots || []) {
-      const start = parseMinutes(slot.startTime);
-      const end = parseMinutes(slot.endTime);
-      if (start == null || end == null || end <= start) continue;
-      min = Math.min(min, start);
-      max = Math.max(max, end);
-    }
-  }
-  if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    return { start: 8 * 60, end: 18 * 60 };
-  }
-  let start = Math.max(7 * 60, Math.floor(min / 60) * 60);
-  let end = Math.min(22 * 60, Math.ceil(max / 60) * 60);
-  if (end <= start) end = start + 60;
-  if (end - start < 6 * 60) {
-    const extra = 6 * 60 - (end - start);
-    start = Math.max(7 * 60, start - Math.floor(extra / 2));
-    end = Math.min(22 * 60, start + Math.max(6 * 60, max - start));
-    if (end - start < 6 * 60) end = Math.min(22 * 60, start + 6 * 60);
-  }
-  return { start, end };
-}
-
-function layoutDay(
-  courses: Course[],
-  day: Weekday,
-): PlacedBlock[] {
+function layoutDay(courses: Course[], day: Weekday): PlacedBlock[] {
   const drafts: Omit<PlacedBlock, "col" | "cols">[] = [];
+  let number = 0;
   for (const course of courses) {
     for (const slot of course.slots || []) {
+      number += 1;
       if (slot.weekday !== day) continue;
       const start = parseMinutes(slot.startTime);
       const end = parseMinutes(slot.endTime);
       if (start == null || end == null || end <= start) continue;
       drafts.push({
         name: course.name,
+        number,
         startLabel: slot.startTime,
         endLabel: slot.endTime,
         start,
@@ -96,36 +64,31 @@ function layoutDay(
       });
     }
   }
-  const sorted = drafts.sort((a, b) => a.start - b.start || a.end - b.end);
-  const placed: PlacedBlock[] = [];
-  const active: { end: number; col: number }[] = [];
-  for (const item of sorted) {
-    for (let index = active.length - 1; index >= 0; index -= 1) {
-      if (active[index].end <= item.start) active.splice(index, 1);
-    }
-    const used = new Set(active.map((entry) => entry.col));
-    let col = 0;
-    while (used.has(col)) col += 1;
-    active.push({ end: item.end, col });
-    placed.push({ ...item, col, cols: 1 });
-  }
-  for (const item of placed) {
-    const overlapping = placed.filter((other) => other.start < item.end && item.start < other.end);
-    item.cols = Math.max(...overlapping.map((other) => other.col)) + 1;
-  }
-  return placed;
+  return placeTimeRanges(drafts);
 }
 
-function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+function fitText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+) {
   if (ctx.measureText(text).width <= maxWidth) return text;
   let trimmed = text;
-  while (trimmed.length > 1 && ctx.measureText(`${trimmed}…`).width > maxWidth) {
+  while (
+    trimmed.length > 1 &&
+    ctx.measureText(`${trimmed}…`).width > maxWidth
+  ) {
     trimmed = trimmed.slice(0, -1);
   }
   return `${trimmed}…`;
 }
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number) {
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+) {
   const chars = [...text];
   const lines: string[] = [];
   let current = "";
@@ -179,18 +142,35 @@ export async function renderShareCard(
   courses: Course[],
   labels: { heading: string; footer: string; weekdays: Record<string, string> },
 ) {
+  courses = exportableCourses(courses);
+  const details = courses.flatMap((c) =>
+    c.slots.map((s) => ({ name: c.name, slot: s })),
+  );
   const canvas = document.createElement("canvas");
   canvas.width = SHARE_CARD_WIDTH;
-  canvas.height = SHARE_CARD_HEIGHT;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not draw share card.");
+  ctx.font = `600 24px ${FONT}`;
+  let detailY = SHARE_CARD_HEIGHT;
+  const detailRows = details.map((detail, index) => {
+    const lines = wrapText(ctx, `${index + 1}. ${detail.name}`, 930, Infinity);
+    const y = detailY;
+    detailY += Math.max(120, lines.length * 30 + 60);
+    return { ...detail, lines, y };
+  });
+  canvas.height = detailY;
 
-  const background = ctx.createLinearGradient(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
+  const background = ctx.createLinearGradient(
+    0,
+    0,
+    SHARE_CARD_WIDTH,
+    SHARE_CARD_HEIGHT,
+  );
   background.addColorStop(0, "#312e81");
   background.addColorStop(0.42, "#4338ca");
   background.addColorStop(1, "#111827");
   ctx.fillStyle = background;
-  ctx.fillRect(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
+  ctx.fillRect(0, 0, SHARE_CARD_WIDTH, canvas.height);
 
   const glow = ctx.createRadialGradient(540, 160, 20, 540, 220, 560);
   glow.addColorStop(0, "rgba(255,255,255,0.2)");
@@ -217,8 +197,7 @@ export async function renderShareCard(
   roundRect(ctx, panelX, panelY, panelW, panelH, 40);
   ctx.fill();
 
-  const days = visibleDays(courses);
-  const window = timeWindow(courses);
+  const { days, window } = inspectSchedule(courses);
   const gutter = 92;
   const headerH = 78;
   const gridX = panelX + 28 + gutter;
@@ -236,14 +215,20 @@ export async function renderShareCard(
   ctx.font = `700 26px ${FONT}`;
   days.forEach((day, index) => {
     const label = labels.weekdays[day] ?? day;
-    ctx.fillText(fitText(ctx, label, columnW - 12), gridX + columnW * index + columnW / 2, panelY + 38);
+    ctx.fillText(
+      fitText(ctx, label, columnW - 12),
+      gridX + columnW * index + columnW / 2,
+      panelY + 38,
+    );
   });
   ctx.textAlign = "left";
 
   const hours: number[] = [];
-  for (let minute = window.start; minute <= window.end; minute += 60) hours.push(minute);
+  for (let minute = window.start; minute <= window.end; minute += 60)
+    hours.push(minute);
   const yFor = (minute: number) =>
-    gridY + ((minute - window.start) / Math.max(60, window.end - window.start)) * gridH;
+    gridY +
+    ((minute - window.start) / Math.max(60, window.end - window.start)) * gridH;
 
   ctx.strokeStyle = "#e7e5e4";
   ctx.lineWidth = 2;
@@ -262,30 +247,61 @@ export async function renderShareCard(
     for (const block of layoutDay(courses, day)) {
       const rawY = yFor(block.start);
       const rawBottom = yFor(block.end);
-      const x = gridX + dayIndex * columnW + 6 + (block.col * (columnW - 12)) / block.cols;
-      const width = Math.max(36, (columnW - 12) / block.cols - 8);
-      const y = rawY + 4;
-      const height = Math.max(36, rawBottom - rawY - 8);
+      const x =
+        gridX +
+        dayIndex * columnW +
+        6 +
+        (block.col * (columnW - 12)) / block.cols;
+      const width = Math.max(1, (columnW - 12) / block.cols - 4);
+      const y = rawY;
+      const height = rawBottom - rawY;
       ctx.fillStyle = block.color;
       roundRect(ctx, x, y, width, height, 16);
       ctx.fill();
-      ctx.save();
-      roundRect(ctx, x + 8, y + 8, Math.max(8, width - 16), Math.max(8, height - 16), 8);
-      ctx.clip();
-      ctx.fillStyle = "#ffffff";
-      const nameSize = width < 100 ? 16 : 20;
-      ctx.font = `700 ${nameSize}px ${FONT}`;
-      const nameLines = wrapText(ctx, block.name, width - 20, height > 96 ? 2 : 1);
-      nameLines.forEach((line, lineIndex) => {
-        ctx.fillText(line, x + 12, y + 12 + lineIndex * (nameSize + 4));
-      });
-      const timeY = y + 16 + nameLines.length * (nameSize + 4);
-      if (timeY + 18 < y + height) {
-        ctx.font = `500 16px ${FONT}`;
-        ctx.fillStyle = "rgba(255,255,255,0.92)";
-        ctx.fillText(fitText(ctx, `${block.startLabel}–${block.endLabel}`, width - 20), x + 12, timeY);
+      if (height >= 40 && width >= 70) {
+        ctx.save();
+        roundRect(
+          ctx,
+          x + 8,
+          y + 8,
+          Math.max(8, width - 16),
+          Math.max(8, height - 16),
+          8,
+        );
+        ctx.clip();
+        ctx.fillStyle = "#ffffff";
+        const nameSize = width < 100 ? 16 : 20;
+        ctx.font = `700 ${nameSize}px ${FONT}`;
+        const nameLines = wrapText(
+          ctx,
+          `${block.number}. ${block.name}`,
+          width - 20,
+          height > 96 ? 2 : 1,
+        );
+        nameLines.forEach((line, lineIndex) => {
+          ctx.fillText(line, x + 12, y + 12 + lineIndex * (nameSize + 4));
+        });
+        const timeY = y + 16 + nameLines.length * (nameSize + 4);
+        if (timeY + 18 < y + height) {
+          ctx.font = `500 16px ${FONT}`;
+          ctx.fillStyle = "rgba(255,255,255,0.92)";
+          ctx.fillText(
+            fitText(ctx, `${block.startLabel}–${block.endLabel}`, width - 20),
+            x + 12,
+            timeY,
+          );
+        }
+        ctx.restore();
       }
-      ctx.restore();
+      if (height < 40 || width < 70) {
+        ctx.fillStyle = "#312e81";
+        ctx.font = `700 13px ${FONT}`;
+        ctx.fillText(
+          `#${block.number}`,
+          x,
+          Math.min(gridY + gridH - 16, Math.max(gridY, rawY - 16)),
+        );
+      }
     }
   });
 
@@ -306,8 +322,29 @@ export async function renderShareCard(
     // The schedule card is still useful if the QR image fails to load.
   }
 
+  // Every slot has a numbered detail so even one-minute or crowded blocks are readable.
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  detailRows.forEach((detail) => {
+    const y = detail.y;
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `600 24px ${FONT}`;
+    detail.lines.forEach((line, i) => ctx.fillText(line, 72, y + i * 30));
+    ctx.font = `500 22px ${FONT}`;
+    ctx.fillText(
+      `${labels.weekdays[detail.slot.weekday] ?? detail.slot.weekday} ${detail.slot.startTime}–${detail.slot.endTime}`,
+      72,
+      y + detail.lines.length * 30 + 12,
+    );
+  });
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((result) => (result ? resolve(result) : reject(new Error("Could not export share card."))), "image/png");
+    canvas.toBlob(
+      (result) =>
+        result
+          ? resolve(result)
+          : reject(new Error("Could not export share card.")),
+      "image/png",
+    );
   });
   return blob;
 }

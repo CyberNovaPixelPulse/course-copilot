@@ -1,3 +1,4 @@
+import { exportableCourses } from "@/lib/course-time";
 import { NextRequest, NextResponse } from "next/server";
 import {
   accountUsage,
@@ -5,27 +6,15 @@ import {
   accountFailure,
 } from "@/lib/account-access";
 import { coursesToIcs } from "@/lib/ics";
-import {
-  WEEKDAYS,
-  type Course,
-  type CourseSlot,
-  type Weekday,
-} from "@/lib/types";
-
-function isWeekday(value: string): value is Weekday {
-  return (WEEKDAYS as readonly string[]).includes(value);
-}
+import type { Course, CourseSlot } from "@/lib/types";
 
 function isSlot(value: unknown): value is CourseSlot {
   if (!value || typeof value !== "object") return false;
   const slot = value as CourseSlot;
   return (
     typeof slot.weekday === "string" &&
-    isWeekday(slot.weekday) &&
     typeof slot.startTime === "string" &&
     typeof slot.endTime === "string" &&
-    slot.startTime.length <= 8 &&
-    slot.endTime.length <= 8 &&
     (slot.location === undefined ||
       (typeof slot.location === "string" && slot.location.length <= 200))
   );
@@ -134,13 +123,29 @@ async function exportIcs(request: NextRequest) {
   }
 
   try {
-    return new NextResponse(coursesToIcs(payload.courses), {
-      status: 200,
-      headers: ICS_HEADERS,
-    });
-  } catch {
+    return new NextResponse(
+      coursesToIcs(
+        exportableCourses(
+          payload.courses.map((c) => ({
+            ...c,
+            professor: c.professor ?? "",
+            slots: c.slots.map((s) => ({ ...s, location: s.location ?? "" })),
+          })),
+        ),
+      ),
+      {
+        status: 200,
+        headers: ICS_HEADERS,
+      },
+    );
+  } catch (error) {
     return NextResponse.json(
-      { error: "Could not build the calendar file." },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Could not build the calendar file.",
+      },
       { status: 400 },
     );
   }

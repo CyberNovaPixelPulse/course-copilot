@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  exportableCourses,
+  isCourseStructure,
+  inspectSchedule,
+} from "@/lib/course-time";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   formatPlanPrice,
@@ -264,6 +270,7 @@ function ScheduleUploadScreen() {
 
   async function exportCalendar() {
     try {
+      exportableCourses(courses);
       const response = await fetch("/api/export-ics", {
         method: "POST",
         credentials: "include",
@@ -287,8 +294,8 @@ function ScheduleUploadScreen() {
       setExportedIcs(ics);
       downloadIcsFile(ics);
       setExportSuccessOpen(true);
-    } catch {
-      setError(t.upload.icsError);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : t.upload.icsError);
     }
   }
 
@@ -373,8 +380,12 @@ function ScheduleUploadScreen() {
   }
 
   function restoreSchedule(restored: Course[]) {
+    if (!isCourseStructure(restored)) {
+      setError("課表結構無法辨認，無法載入");
+      return;
+    }
     showingSample.current = false;
-    setCourses(restored);
+    setCourses(inspectSchedule(restored).courses);
     setCalendarKey((current) => current + 1);
   }
 
@@ -577,6 +588,15 @@ function ScheduleUploadScreen() {
         </button>
       </div>
 
+      {courses.length === 0 ? (
+        <button
+          type="button"
+          className="mt-4 rounded-full border px-4 py-2"
+          onClick={() => setAddCourseOpen(true)}
+        >
+          {t.upload.addCourse ?? "+ Add course"}
+        </button>
+      ) : null}
       {courses.length > 0 ? (
         <div
           ref={calendarRef}

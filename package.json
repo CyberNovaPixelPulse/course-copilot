@@ -17,7 +17,9 @@
     "test:entitlement-display": "node --test tests/entitlement-display.test.cjs",
     "test:entitlement-display:browser": "node tests/browser/entitlement-display.cjs",
     "test:recognition-batch": "node --test tests/recognition-batch.test.cjs",
-    "test:recognition-batch:browser": "node tests/browser/recognition-batch.cjs"
+    "test:recognition-batch:browser": "node tests/browser/recognition-batch.cjs",
+    "test:course-time": "node --test tests/course-time.test.cjs",
+    "test:course-time:browser": "node tests/browser/course-time.cjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

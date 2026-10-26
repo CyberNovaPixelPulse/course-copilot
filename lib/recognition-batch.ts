@@ -1,4 +1,9 @@
-import { WEEKDAYS, type Course } from "./types";
+import type { Course } from "./types";
+import {
+  isCourseStructure,
+  inspectSchedule,
+  overlappingSlots,
+} from "./course-time";
 export type BatchItemStatus =
   | "preparing"
   | "prepare-error"
@@ -65,27 +70,9 @@ type Hint = {
 };
 function validCourses(value: unknown): value is Course[] {
   return (
-    Array.isArray(value) &&
+    isCourseStructure(value) &&
     value.length > 0 &&
-    value.every(
-      (c) =>
-        c &&
-        typeof c.name === "string" &&
-        typeof c.professor === "string" &&
-        Array.isArray(c.slots) &&
-        c.slots.length > 0 &&
-        c.slots.every(
-          (slot: Record<string, unknown>) =>
-            slot &&
-            WEEKDAYS.includes(slot.weekday as (typeof WEEKDAYS)[number]) &&
-            typeof slot.startTime === "string" &&
-            /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(slot.startTime) &&
-            typeof slot.endTime === "string" &&
-            /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(slot.endTime) &&
-            slot.startTime < slot.endTime &&
-            typeof slot.location === "string",
-        ),
-    )
+    inspectSchedule(value).problems.length === 0
   );
 }
 function combine(items: BatchItem[]) {
@@ -109,17 +96,7 @@ function combine(items: BatchItem[]) {
         });
         if (slots.length) courses.push({ ...course, slots });
       }
-  const slots = courses.flatMap((c) => c.slots);
-  const overlap = slots.some((s, i) =>
-    slots
-      .slice(i + 1)
-      .some(
-        (t) =>
-          s.weekday === t.weekday &&
-          s.startTime < t.endTime &&
-          t.startTime < s.endTime,
-      ),
-  );
+  const overlap = overlappingSlots(courses).length > 0;
   return { candidate: courses, overlap };
 }
 export function createRecognitionBatch(accountId: string, deps: Dependencies) {
@@ -201,7 +178,7 @@ export function createRecognitionBatch(accountId: string, deps: Dependencies) {
     item.message = outcome.message;
     if (outcome.state === "succeeded" && validCourses(outcome.courses)) {
       item.status = "succeeded";
-      item.courses = structuredClone(outcome.courses);
+      item.courses = inspectSchedule(outcome.courses).courses;
     } else if (["failed", "expired", "auth", "payment"].includes(outcome.state))
       item.status = outcome.state === "expired" ? "expired" : "failed";
     else {

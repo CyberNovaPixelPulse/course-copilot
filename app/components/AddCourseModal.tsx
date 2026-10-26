@@ -2,21 +2,10 @@
 
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { WEEKDAYS, type Course, type Weekday } from "@/lib/types";
+import { normalizeSlot } from "@/lib/course-time";
 import { useI18n } from "@/lib/i18n";
 
-const WEEKDAY_OPTIONS = WEEKDAYS.slice(0, 5);
-
-function quarterHours(fromMinutes = 8 * 60, toMinutes = 22 * 60) {
-  const values: string[] = [];
-  for (let minutes = fromMinutes; minutes <= toMinutes; minutes += 15) {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    values.push(`${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`);
-  }
-  return values;
-}
-
-const TIME_OPTIONS = quarterHours();
+const WEEKDAY_OPTIONS = WEEKDAYS;
 
 export default function AddCourseModal({
   onClose,
@@ -50,21 +39,20 @@ export default function AddCourseModal({
       setError(t.upload.addCourseNameRequired ?? "請輸入課程名稱");
       return;
     }
-    if (startTime >= endTime) {
-      setError(t.upload.addCourseTimeInvalid ?? "結束時間須晚於開始時間");
+    const normalized = normalizeSlot({
+      weekday: day,
+      startTime,
+      endTime,
+      location: location.trim(),
+    });
+    if (!normalized.slot) {
+      setError(normalized.problem);
       return;
     }
     onAdd({
       name: trimmed,
       professor: professor.trim(),
-      slots: [
-        {
-          weekday: day,
-          startTime,
-          endTime,
-          location: location.trim(),
-        },
-      ],
+      slots: [normalized.slot],
     });
   }
 
@@ -86,7 +74,10 @@ export default function AddCourseModal({
         onSubmit={submit}
         className="relative z-10 w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-950"
       >
-        <h3 id={titleId} className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+        <h3
+          id={titleId}
+          className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+        >
           {t.upload.addCourseTitle ?? "新增課程"}
         </h3>
         <label className="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -101,7 +92,11 @@ export default function AddCourseModal({
         </label>
         <label className="mt-3 block text-sm font-medium text-slate-700 dark:text-slate-200">
           {t.upload.addCourseDay ?? "星期幾"}
-          <select value={day} onChange={(event) => setDay(event.target.value as Weekday)} className={fieldClass}>
+          <select
+            value={day}
+            onChange={(event) => setDay(event.target.value as Weekday)}
+            className={fieldClass}
+          >
             {WEEKDAY_OPTIONS.map((weekday) => (
               <option key={weekday} value={weekday}>
                 {t.calendar.weekdays[weekday] ?? weekday}
@@ -112,23 +107,25 @@ export default function AddCourseModal({
         <div className="mt-3 grid grid-cols-2 gap-3">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
             {t.upload.addCourseStart ?? "開始時間"}
-            <select value={startTime} onChange={(event) => setStartTime(event.target.value)} className={fieldClass}>
-              {TIME_OPTIONS.map((time) => (
-                <option key={time} value={time}>
-                  {time}
-                </option>
-              ))}
-            </select>
+            <input
+              aria-label="開始時間"
+              value={startTime}
+              onChange={(event) => setStartTime(event.target.value)}
+              placeholder="HH:mm"
+              inputMode="text"
+              className={fieldClass}
+            />
           </label>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
             {t.upload.addCourseEnd ?? "結束時間"}
-            <select value={endTime} onChange={(event) => setEndTime(event.target.value)} className={fieldClass}>
-              {TIME_OPTIONS.map((time) => (
-                <option key={time} value={time}>
-                  {time}
-                </option>
-              ))}
-            </select>
+            <input
+              aria-label="結束時間"
+              value={endTime}
+              onChange={(event) => setEndTime(event.target.value)}
+              placeholder="HH:mm"
+              inputMode="text"
+              className={fieldClass}
+            />
           </label>
         </div>
         <label className="mt-3 block text-sm font-medium text-slate-700 dark:text-slate-200">

@@ -1,0 +1,80 @@
+{
+  "sample_id": "user-supplied-001",
+  "started_at": "2026-10-26T15:37:43.794Z",
+  "finished_at": "2026-10-26T15:37:53.812Z",
+  "git_commit": "fcb0b90e3a6fe8abe5f23be959751c83727f42ed",
+  "original_sha256": "3a0834b7a39d0710fbf6299511e7cfaa1174184d76fed26239c0713feccd9783",
+  "annotation_sha256": "c70f8d325c8c51d4c2f6295e3174be8949a9030085c1f8401eb278cb85746055",
+  "adapter_sha256": "9e858e5e1db5a78b29bbc038656752c45b443fc477f274b5f5b2601fa5e9c86e",
+  "recognizer_sha256": "24da1da4ea1af78c046e170087c811fb9c7c2dab95239d9814b8cfa936610d12",
+  "configuration": {
+    "model": "gpt-4o",
+    "temperature": 0,
+    "top_p": 1e-06,
+    "seed": 42,
+    "image_detail": "high",
+    "timeout_ms": 45000,
+    "max_retries": 0
+  },
+  "attempted_calls": 1,
+  "crop": {
+    "left": 0,
+    "top": 0,
+    "width": 1910,
+    "height": 1594,
+    "sha256": "5eee954950554655cc4a15eabbd44f0815efd9ae0f0cb0a6013e11c70d30c7f6"
+  },
+  "human_answers_confirmed": true,
+  "approved_max_calls": 1,
+  "actual_model": "gpt-4o-2024-08-06",
+  "usage": {
+    "input_tokens": 1285,
+    "output_tokens": 693,
+    "latency_ms": 10005
+  },
+  "result": {
+    "pipeline_outcome": "success",
+    "sample_quality_outcome": "failed",
+    "expected_courses": 11,
+    "actual_courses": 11,
+    "expected_slots": 14,
+    "actual_slots": 14,
+    "exact_slot_matches": 10,
+    "weekday_errors": 3,
+    "course_name_errors": 1,
+    "missing_output_slots_by_count": 0,
+    "strict_rejection": false
+  },
+  "differences": [
+    {
+      "annotation_course_ref": "C06",
+      "expected_weekday": "Tuesday",
+      "actual_weekday": "Monday",
+      "time": "16:10–18:00"
+    },
+    {
+      "annotation_course_ref": "C07",
+      "expected_weekday": "Wednesday",
+      "actual_weekday": "Thursday",
+      "time": "16:10–18:00"
+    },
+    {
+      "annotation_course_ref": "C08",
+      "weekday": "Thursday",
+      "time": "08:10–10:00",
+      "error": "course name omitted one character: 書"
+    },
+    {
+      "annotation_course_ref": "C10",
+      "expected_weekday": "Thursday",
+      "actual_weekday": "Friday",
+      "time": "19:10–21:00"
+    }
+  ],
+  "limitations": [
+    "One user-confirmed real screenshot after authorized weekend-only crop; not full #9 coverage.",
+    "Counts alone do not establish correctness.",
+    "No root cause established; no prompt/schema/rule changes or retries.",
+    "Image, annotation and detailed output remain local; no product DB writes or account credit operations."
+  ]
+}

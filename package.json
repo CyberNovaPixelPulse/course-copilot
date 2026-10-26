@@ -10,7 +10,8 @@
     "test:payments": "node --test tests/ecpay.test.cjs",
     "test": "node --test tests/*.test.cjs",
     "test:accounts": "node --test tests/account-entitlements.test.cjs",
-    "accounts:admin": "node scripts/account-admin.cjs"
+    "accounts:admin": "node scripts/account-admin.cjs",
+    "test:recognition": "node --test tests/schedule-recognition.test.cjs tests/account-routes.test.cjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

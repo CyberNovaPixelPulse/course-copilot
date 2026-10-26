@@ -394,16 +394,22 @@ function ScheduleUploadScreen() {
             throw new Error(data.error || t.upload.parseFailed);
           }
           if (!response.ok) {
-            const check = await fetch(
-              `/api/recognition/jobs?id=${encodeURIComponent(jobId)}`,
-            );
-            if (check.ok) {
-              const saved = await check.json();
-              if (
-                saved.jobs?.[0]?.state === "failed" ||
-                saved.jobs?.[0]?.state === "expired"
-              )
-                window.localStorage.removeItem(pendingKey);
+            if (![409, 422, 402].includes(response.status)) {
+              try {
+                const check = await fetch(
+                  `/api/recognition/jobs?id=${encodeURIComponent(jobId)}`,
+                );
+                if (check.ok) {
+                  const saved = await check.json();
+                  if (
+                    saved.jobs?.[0]?.state === "failed" ||
+                    saved.jobs?.[0]?.state === "expired"
+                  )
+                    window.localStorage.removeItem(pendingKey);
+                }
+              } catch {
+                /* Keep the concrete failure and uncertain job reference. */
+              }
             }
             throw new Error(data.error || t.upload.parseFailed);
           }

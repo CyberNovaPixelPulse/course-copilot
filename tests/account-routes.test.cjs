@@ -34,26 +34,34 @@ require("../lib/session.ts").getGoogleSession = async () => session;
 let calls = 0,
   logFailure = false,
   recognize;
-turso.logAiUsage = async () => {
-  if (logFailure) throw new Error("injected logging failure");
-};
 const parser = require("../lib/parse-schedule.ts");
 const fixture = {
-  meetings: [{ name: "Math", day: 1, periods: ["C"], room: "101" }],
-  calls: [
-    {
-      model: "gpt-4o",
-      inputTokens: 1,
-      outputTokens: 1,
-      latencyMs: 1,
-      stage: "courses",
-    },
-  ],
+  scratchpad: {
+    columns: [1, 2, 3, 4, 5].map((column) => ({
+      column,
+      occupancy: column === 1 ? "Has Courses" : "Empty Column",
+    })),
+    cells: [{ name: "Math", column: 1, codes: ["C"] }],
+  },
+  courses: [{ name: "Math", day: 1, periods: ["C"], room: "101" }],
 };
-parser.parseScheduleImage = async () => {
-  calls++;
-  return recognize ? await recognize() : fixture;
-};
+parser.parseScheduleImage = parser.createScheduleRecognizer({
+  model: async () => {
+    calls++;
+    return recognize
+      ? await recognize()
+      : {
+          content: JSON.stringify(fixture),
+          model: "gpt-4o",
+          inputTokens: 1,
+          outputTokens: 1,
+          latencyMs: 1,
+        };
+  },
+  record: async () => {
+    if (logFailure) throw new Error("injected logging failure");
+  },
+});
 const parse = require("../app/api/parse-schedule/route.ts");
 const usage = require("../app/api/user/usage/route.ts");
 const jobs = require("../app/api/recognition/jobs/route.ts");
@@ -104,6 +112,44 @@ test("authenticated parse retries return saved courses without second call; acco
     assert.equal((await parse.POST(image("logging-failure-01"))).status, 500);
     logFailure = false;
     assert.equal((await (await usage.GET()).json()).freeScansRemaining, 2);
+    const invalid = structuredClone(fixture);
+    invalid.courses[0].periods = ["K"];
+    recognize = async () => ({
+      content: JSON.stringify(invalid),
+      model: "gpt-4o",
+      inputTokens: 4,
+      outputTokens: 2,
+      latencyMs: 1,
+    });
+    const rejected = await parse.POST(image("invalid-content-01"));
+    assert.equal(rejected.status, 422);
+    const rejection = await rejected.json();
+    assert.equal(rejection.code, "unknown_period");
+    assert.match(rejection.error, /Math/);
+    assert.equal((await (await usage.GET()).json()).freeScansRemaining, 2);
+    assert.equal(
+      (
+        await (
+          await jobs.GET(
+            new NextRequest(
+              "https://app.example/api/recognition/jobs?id=invalid-content-01",
+            ),
+          )
+        ).json()
+      ).jobs[0].state,
+      "failed",
+    );
+    recognize = async () => {
+      throw new Error("private provider credentials");
+    };
+    const providerFailure = await parse.POST(image("provider-failure-01"));
+    assert.equal(providerFailure.status, 502);
+    assert(
+      !JSON.stringify(await providerFailure.json()).includes(
+        "private provider",
+      ),
+    );
+    recognize = undefined;
     const blocked = await exported.POST(
       new NextRequest("https://app.example/api/export-ics", {
         method: "POST",
